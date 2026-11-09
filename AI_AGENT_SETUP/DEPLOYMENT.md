@@ -14,7 +14,7 @@ This means a change pushed from either Mac or Windows follows the same central b
 
 ## One-time GitHub setup
 
-1. In the repository, open **Settings → Pages** and set **Source** to **GitHub Actions**.
+1. The workflow attempts to enable GitHub Pages automatically. If GitHub does not allow that from Actions, open **Settings → Pages** and set **Source** to **GitHub Actions** manually.
 2. Open **Settings → Secrets and variables → Actions** and add these repository secrets:
    - `DTLIVE_BASE_URL` — deployed Laravel API URL ending in `/api/`
    - `DTLIVE_API_TOKEN` — API token for that environment
