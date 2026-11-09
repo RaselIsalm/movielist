@@ -2,6 +2,10 @@
 
 Complete DTLive application source, server code, Flutter app, documentation, and database dump.
 
+## AI agent setup
+
+Any coding agent should start with [AI_AGENT_SETUP/README.md](AI_AGENT_SETUP/README.md). It defines the cross-platform sync, local build, secret handling, commit, push, and automatic deployment process. The root [AGENTS.md](AGENTS.md) points agents to this entrypoint.
+
 ## দুই কম্পিউটারে কাজ করার নিয়ম
 
 এই repository-টাই project-এর shared master copy। Mac বা Windows PC-তে ZIP বারবার download করবেন না। প্রতিটি কম্পিউটারে একবার `git clone` করুন, এরপর কাজ শুরু করার আগে `git pull` এবং কাজ শেষ হলে `git push` করুন। বিস্তারিত কমান্ড [WORKFLOW.md](WORKFLOW.md)-তে আছে।

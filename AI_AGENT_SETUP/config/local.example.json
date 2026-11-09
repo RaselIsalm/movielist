@@ -1,0 +1,5 @@
+{
+  "DTLIVE_BASE_URL": "http://localhost:8001/api/",
+  "DTLIVE_API_TOKEN": "",
+  "DTLIVE_WEB_DOMAIN_URL": "http://localhost:8080/"
+}

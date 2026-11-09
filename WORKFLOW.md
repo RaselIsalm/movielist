@@ -1,5 +1,7 @@
 # Mac ও Windows PC-তে DTLive চালানোর workflow
 
+AI coding agent-এর জন্য প্রথমে `AGENTS.md` এবং `AI_AGENT_SETUP/README.md` পড়ুন। Sync ও web build-এর repeatable scripts ওই folder-এ আছে।
+
 ## ১. একবারের setup
 
 দুই কম্পিউটারেই Git ইনস্টল করুন। যে platform-এ app চালাবেন সেখানে Flutter SDK, Android Studio/SDK এবং প্রয়োজন হলে PHP ও Composer ইনস্টল করুন। iOS build শুধু macOS-এ করা যাবে।

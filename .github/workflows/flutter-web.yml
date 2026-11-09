@@ -1,0 +1,87 @@
+name: Flutter web build and deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out pushed commit
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Configure GitHub Pages
+        id: pages
+        uses: actions/configure-pages@v5
+
+      - name: Create CI build configuration
+        env:
+          DTLIVE_BASE_URL: ${{ secrets.DTLIVE_BASE_URL }}
+          DTLIVE_API_TOKEN: ${{ secrets.DTLIVE_API_TOKEN }}
+          DTLIVE_WEB_DOMAIN_URL: ${{ secrets.DTLIVE_WEB_DOMAIN_URL }}
+        run: |
+          if [ -z "$DTLIVE_BASE_URL" ] || [ -z "$DTLIVE_API_TOKEN" ] || [ -z "$DTLIVE_WEB_DOMAIN_URL" ]; then
+            echo "Set DTLIVE_BASE_URL, DTLIVE_API_TOKEN, and DTLIVE_WEB_DOMAIN_URL in repository Actions secrets." >&2
+            exit 1
+          fi
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          output = Path(os.environ['RUNNER_TEMP']) / 'dtlive-build.json'
+          output.write_text(json.dumps({
+              'DTLIVE_BASE_URL': os.environ['DTLIVE_BASE_URL'],
+              'DTLIVE_API_TOKEN': os.environ['DTLIVE_API_TOKEN'],
+              'DTLIVE_WEB_DOMAIN_URL': os.environ['DTLIVE_WEB_DOMAIN_URL'],
+          }))
+          print(output)
+          PY
+
+      - name: Build Flutter web release
+        env:
+          CONFIG_FILE: ${{ runner.temp }}/dtlive-build.json
+        run: |
+          APP_DIR="$(find "DTLive v2" -type d -path '*/Mainfiles_DTLive/Appcode/yourappname' -print -quit)"
+          if [ -z "$APP_DIR" ]; then
+            echo "Flutter app directory was not found." >&2
+            exit 1
+          fi
+          cd "$APP_DIR"
+          flutter pub get
+          BASE_HREF="/${GITHUB_REPOSITORY#*/}/"
+          flutter build web --release --base-href "$BASE_HREF" --dart-define-from-file="$CONFIG_FILE"
+          echo "APP_DIR=$APP_DIR" >> "$GITHUB_ENV"
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ${{ env.APP_DIR }}/build/web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

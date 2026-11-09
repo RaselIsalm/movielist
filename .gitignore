@@ -26,3 +26,7 @@
 **/.vscode/
 **/xcuserdata/
 **/.symlinks/
+
+# Per-machine AI-agent build configuration
+AI_AGENT_SETUP/config/local.json
+AI_AGENT_SETUP/config/*.local.json

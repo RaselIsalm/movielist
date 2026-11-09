@@ -2,10 +2,17 @@ import '../model/qualitymodel.dart';
 import '../model/subtitlemodel.dart';
 
 class Constant {
-  static String baseUrl =
-      'http://localhost:8001/api/'; // Local API (admin_panel artisan serve)
-  static String apiToken =
-      'DTLdcFLx12g5MIGu7deMJIJQTD56qcZx'; // From local admin_panel .env
+  // Values are supplied at build time with --dart-define-from-file. Keep
+  // secrets out of source control so macOS, Windows, and CI can use separate
+  // environments safely.
+  static String baseUrl = const String.fromEnvironment(
+    'DTLIVE_BASE_URL',
+    defaultValue: 'http://localhost:8001/api/',
+  );
+  static String apiToken = const String.fromEnvironment(
+    'DTLIVE_API_TOKEN',
+    defaultValue: '',
+  );
 
   static String appName = "yourappname";
   static String appPackageName =
@@ -81,7 +88,10 @@ class Constant {
   static String interstialAdType = "interstialAd";
 
   /* Stripe Checkout fields */
-  static const String webDomainURL = 'http://localhost:8080/'; //Localhost
+  static const String webDomainURL = String.fromEnvironment(
+    'DTLIVE_WEB_DOMAIN_URL',
+    defaultValue: 'http://localhost:8080/',
+  );
   // static const String webDomainURL =
   //     'https://dtlivefweb.divinetechs.com/'; //Normal Web Host
   static String? paymentMode =
