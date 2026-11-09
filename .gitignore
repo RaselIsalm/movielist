@@ -1,0 +1,28 @@
+# Operating-system metadata
+.DS_Store
+
+# Local secrets and credentials
+**/.env
+**/.env.*
+!**/.env.example
+**/*service_account*.json
+**/*.jks
+**/*.keystore
+**/key.properties
+
+# Generated Flutter/Dart output
+**/.dart_tool/
+**/build/
+**/coverage/
+
+# Generated/native dependency output
+**/.gradle/
+**/Pods/
+**/node_modules/
+**/vendor/
+
+# Local editor and machine files
+**/.idea/
+**/.vscode/
+**/xcuserdata/
+**/.symlinks/
