@@ -14,6 +14,21 @@
 use App\Http\Controllers\Api\HomeController;
 use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Storage;
+
+// Serve public catalog files through the API middleware stack so Flutter Web
+// receives the same CORS headers as JSON requests on a separate local port.
+Route::get('media/{folder}/{filename}', function (string $folder, string $filename) {
+    $publicFolders = ['app', 'avatar', 'cast', 'category', 'channel', 'content', 'language', 'notification', 'type', 'user'];
+
+    abort_unless(in_array($folder, $publicFolders, true), 404);
+    abort_unless(basename($filename) === $filename && $filename !== '.' && $filename !== '..', 404);
+
+    $path = Storage::disk('public')->path($folder . '/' . $filename);
+    abort_unless(is_file($path), 404);
+
+    return response()->file($path, ['Cache-Control' => 'public, max-age=3600']);
+})->withoutMiddleware('throttle:api');
 
 Route::group(['middleware' => 'apipurchasecode'], function () {
     Route::group(['middleware' => 'apiauthtoken'], function () {

@@ -20,15 +20,21 @@ class PushNotificationService {
   static GoogleSignIn googleSignIn = GoogleSignIn.instance;
 
   Future<void> setupInteractedMessage(BuildContext context) async {
-    await FirebaseMessaging.instance.setAutoInitEnabled(true);
-    await Firebase.initializeApp();
-    await getAccessToken();
-    enableIOSNotifications();
-    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-      printLog("===> msg $message");
-    });
-    if (context.mounted) {
-      await registerNotificationListeners(context);
+    try {
+      await FirebaseMessaging.instance.setAutoInitEnabled(true);
+      await Firebase.initializeApp();
+      await getAccessToken();
+      await enableIOSNotifications();
+      FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+        printLog("===> msg $message");
+      });
+      if (context.mounted) {
+        await registerNotificationListeners(context);
+      }
+    } on Exception catch (e) {
+      // A local build may not have Firebase credentials. Keep core browsing
+      // usable while notification setup remains unavailable.
+      printLog("Push notification setup skipped: $e");
     }
   }
 
@@ -185,19 +191,39 @@ class PushNotificationService {
       "https://www.googleapis.com/auth/firebase.messaging";
 
   static Future<String> getAccessToken() async {
-    final response = await Utils.loadJsonFromAssets(
-      'assets/firebase/firebase_service_account.json',
-    );
-    printLog("getAccessToken response ======> $response");
+    try {
+      final response = await Utils.loadJsonFromAssets(
+        'assets/firebase/firebase_service_account.json',
+      );
+      final privateKey = response['private_key'];
+      final clientEmail = response['client_email'];
+      final projectId = response['project_id'];
+      if (privateKey is! String ||
+          clientEmail is! String ||
+          projectId is! String ||
+          privateKey.trim().isEmpty ||
+          clientEmail.trim().isEmpty ||
+          projectId.trim().isEmpty ||
+          privateKey.contains('XXXXXXXX') ||
+          clientEmail.contains('XXXXXXXX') ||
+          projectId.contains('XXXXXXXX')) {
+        Constant.accessToken = null;
+        printLog('Firebase service account is not configured for this build.');
+        return '';
+      }
 
-    final client = await clientViaServiceAccount(
-      ServiceAccountCredentials.fromJson(response),
-      [firebaseMessagingScope],
-    );
+      final client = await clientViaServiceAccount(
+        ServiceAccountCredentials.fromJson(response),
+        [firebaseMessagingScope],
+      );
 
-    final accessToken = client.credentials.accessToken.data;
-    Constant.accessToken = accessToken;
-    printLog("getAccessToken accessToken ===> ${Constant.accessToken}");
-    return accessToken;
+      final accessToken = client.credentials.accessToken.data;
+      Constant.accessToken = accessToken;
+      return accessToken;
+    } on Exception catch (e) {
+      Constant.accessToken = null;
+      printLog('Firebase access token unavailable: $e');
+      return '';
+    }
   }
 }

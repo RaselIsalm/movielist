@@ -56,7 +56,8 @@ return [
 
     'asset_url' => env('ASSET_URL', null),
 
-    'image_url' => env('APP_URL', null) . "/storage/app/public/",
+    // Route public files through API middleware so Flutter Web gets CORS headers.
+    'image_url' => env('APP_URL', null) . "/api/media/",
 
     /*
     |--------------------------------------------------------------------------

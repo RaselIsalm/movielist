@@ -232,11 +232,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
     /* Push Notification Set-up */
     PushNotificationService().setupInteractedMessage(context);
-    FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
     /* Push Notification Set-up */
 
     if (!mounted) return;
