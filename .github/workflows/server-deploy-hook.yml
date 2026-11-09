@@ -1,0 +1,25 @@
+name: Trigger Laravel deployment
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger hosting provider deploy hook
+        if: ${{ env.DEPLOY_HOOK_URL != '' }}
+        env:
+          DEPLOY_HOOK_URL: ${{ secrets.DEPLOY_HOOK_URL }}
+        run: curl --fail --show-error --silent --retry 3 -X POST "$DEPLOY_HOOK_URL"
+
+      - name: Explain skipped deployment
+        if: ${{ env.DEPLOY_HOOK_URL == '' }}
+        env:
+          DEPLOY_HOOK_URL: ${{ secrets.DEPLOY_HOOK_URL }}
+        run: echo "Set the DEPLOY_HOOK_URL Actions secret to enable automatic Laravel deployment."

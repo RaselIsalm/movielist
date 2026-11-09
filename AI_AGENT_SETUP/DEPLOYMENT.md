@@ -21,7 +21,9 @@ This means a change pushed from either Mac or Windows follows the same central b
    - `DTLIVE_WEB_DOMAIN_URL` — public web/payment callback URL
 3. Push to `main` and open the **Actions** tab. Wait for `Flutter web build and deploy` to finish successfully.
 
-The Pages URL will normally be `https://sbayshop3171-ship-it.github.io/movielist/`. The Flutter API must be deployed separately; the workflow only deploys the Flutter web frontend. For the Laravel server, use the hosting provider's deploy hook or SSH deployment separately, then set the resulting API URL in `DTLIVE_BASE_URL`.
+The Pages URL will normally be `https://sbayshop3171-ship-it.github.io/movielist/`. The Flutter API must be deployed separately; the Pages workflow only deploys the Flutter web frontend.
+
+For automatic Laravel deployment, add a `DEPLOY_HOOK_URL` Actions secret containing the deploy webhook from the hosting provider. `.github/workflows/server-deploy-hook.yml` will call it after every push to `main`. If the provider has no deploy hook, use its official SSH/deployment action instead.
 
 ## If the target is not GitHub Pages
 

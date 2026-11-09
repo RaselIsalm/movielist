@@ -17,4 +17,4 @@ This folder is the canonical operating manual for an AI agent working on DTLive 
 - Pull before editing and push after a completed, reviewable change.
 - Generated directories (`build`, `.dart_tool`, `vendor`, caches) are recreated on each machine and are not synchronized.
 - `.env`, API tokens, service-account files, signing keys, and payment secrets stay local or in GitHub Secrets.
-- A push to `main` starts the GitHub Actions workflow in `.github/workflows/flutter-web.yml`. It builds a release web artifact and deploys it to GitHub Pages after the one-time Pages and secret setup described in `DEPLOYMENT.md`.
+- A push to `main` starts the GitHub Actions workflows in `.github/workflows/`. The Flutter workflow builds a release web artifact and deploys it to GitHub Pages after the one-time Pages and secret setup described in `DEPLOYMENT.md`; the optional Laravel hook workflow deploys the backend when `DEPLOY_HOOK_URL` is configured.
