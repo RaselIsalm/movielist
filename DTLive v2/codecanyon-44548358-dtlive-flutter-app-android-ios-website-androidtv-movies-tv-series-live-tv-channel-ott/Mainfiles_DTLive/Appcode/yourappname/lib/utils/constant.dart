@@ -14,7 +14,7 @@ class Constant {
     defaultValue: '',
   );
 
-  static String appName = "yourappname";
+  static String appName = "DTLive Studio";
   static String appPackageName =
       "com.example.yourappname"; // This is used for PIP channel
   static String appleAppId = ""; // This is used for Appstore iOS App redirect
