@@ -11,6 +11,11 @@ class Installation
 {
     public function handle(Request $request, Closure $next)
     {
+        // Allow unverified admin access only when explicitly enabled on a local instance.
+        if (app()->environment('local') && filter_var(env('DTLIVE_ALLOW_UNVERIFIED_ADMIN', false), FILTER_VALIDATE_BOOLEAN)) {
+            return $next($request);
+        }
+
         try {
 
             Artisan::call('config:clear');
