@@ -3,6 +3,8 @@ name: Flutter web build and deploy
 on:
   push:
     branches: [main]
+    paths:
+      - 'DTLive v2/**/Mainfiles_DTLive/Appcode/yourappname/**'
   workflow_dispatch:
 
 permissions:
