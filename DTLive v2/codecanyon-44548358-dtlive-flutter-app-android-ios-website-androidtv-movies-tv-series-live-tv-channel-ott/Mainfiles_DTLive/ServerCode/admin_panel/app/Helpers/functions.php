@@ -172,7 +172,7 @@ function Demo_Mode()
 function Demo_Domain()
 {
     $domain = request()->getHost();
-    if ($domain == base64_decode('bG9jYWxob3N0') || $domain == base64_decode('ZGV2LmRpdmluZXRlY2hzLmNvbQ==') || $domain == base64_decode('c3RhZy5kaXZpbmV0ZWNocy5jb20=') || $domain == base64_decode('ZHRsaXZlLmRpdmluZXRlY2hzLmNvbQ==') || $domain == base64_decode('ZHRsaXZlYXBwLmRpdmluZXRlY2hzLmNvbQ==')) {
+    if ($domain == base64_decode('bG9jYWxob3N0') || $domain == '127.0.0.1' || $domain == '::1' || $domain == base64_decode('ZGV2LmRpdmluZXRlY2hzLmNvbQ==') || $domain == base64_decode('c3RhZy5kaXZpbmV0ZWNocy5jb20=') || $domain == base64_decode('ZHRsaXZlLmRpdmluZXRlY2hzLmNvbQ==') || $domain == base64_decode('ZHRsaXZlYXBwLmRpdmluZXRlY2hzLmNvbQ==')) {
         return 1;
     } else {
         return 0;
