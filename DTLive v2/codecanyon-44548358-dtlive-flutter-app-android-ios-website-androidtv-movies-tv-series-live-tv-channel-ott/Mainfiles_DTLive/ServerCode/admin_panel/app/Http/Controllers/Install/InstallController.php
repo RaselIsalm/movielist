@@ -36,6 +36,11 @@ class InstallController extends Controller
         $verflyDomain = Demo_Domain();
         if ($verflyDomain == 1) {
 
+            if (in_array($request->getHost(), ['localhost', '127.0.0.1', '::1'], true)) {
+                $webUrl = rtrim(env('WEB_URL', 'http://127.0.0.1:8080'), '/');
+                return redirect($webUrl . '/');
+            }
+
             return redirect()->route('admin.login');
         } else {
 
