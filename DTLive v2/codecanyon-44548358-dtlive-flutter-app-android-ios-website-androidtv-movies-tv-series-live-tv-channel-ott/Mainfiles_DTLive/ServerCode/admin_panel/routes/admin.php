@@ -49,6 +49,10 @@ use App\Http\Controllers\Admin\ReviewController;
 
 Route::group(['middleware' => 'installation'], function () {
 
+    Route::get('/', static function () {
+        return redirect()->route('admin.login');
+    });
+
     // Login-Logout
     Route::get('login', [LoginController::class, 'login'])->name('admin.login');
     Route::post('login', [LoginController::class, 'save_login'])->name('admin.save.login');
