@@ -159,6 +159,149 @@ class VideoController extends Controller
             return response()->json(['status' => 400, 'errors' => $e->getMessage()]);
         }
     }
+    /** Return existing server videos that still need a generated preview frame. */
+    public function missingPreviews($type_id)
+    {
+        $type = Type::where('id', $type_id)->where('status', 1)->first();
+        if (!$type) {
+            return response()->json(['status' => 404, 'errors' => ['Content type not found.']], 404);
+        }
+
+        $videos = Video::where('type_id', $type_id)
+            ->where('video_upload_type', 'server_video')
+            ->whereNotNull('video_320')
+            ->where('video_320', '!=', '')
+            ->orderBy('id')
+            ->get(['id', 'name', 'video_320', 'video_storage_type', 'thumbnail', 'landscape', 'storage_type'])
+            ->filter(function ($video) {
+                return !$this->previewImageExists($video->thumbnail, $video->storage_type)
+                    || !$this->previewImageExists($video->landscape, $video->storage_type);
+            });
+
+        $skipped = 0;
+        $items = $videos->map(function ($video) use (&$skipped) {
+            $url = $this->common->getVideo($this->folder_content, $video->video_320, $video->video_storage_type);
+            if (!is_string($url) || $url === '') {
+                $skipped++;
+                return null;
+            }
+
+            return ['id' => $video->id, 'name' => $video->name, 'url' => $url];
+        })->filter()->values();
+
+        return response()->json([
+            'status' => 200,
+            'count' => $items->count(),
+            'skipped_count' => $skipped,
+            'items' => $items,
+        ]);
+    }
+
+    /** Store a browser-captured video frame on an existing video with missing artwork. */
+    public function saveGeneratedPreview(Request $request, $type_id)
+    {
+        $validator = Validator::make($request->all(), [
+            'video_id' => 'required|integer',
+            'thumbnail' => 'required|image|mimes:jpeg,jpg,png|max:5120',
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['status' => 400, 'errors' => $validator->errors()->all()], 422);
+        }
+
+        $type = Type::where('id', $type_id)->where('status', 1)->first();
+        if (!$type) {
+            return response()->json(['status' => 404, 'errors' => ['Content type not found.']], 404);
+        }
+
+        $video = Video::where('id', $request->input('video_id'))
+            ->where('type_id', $type_id)
+            ->where('video_upload_type', 'server_video')
+            ->first();
+        if (!$video || !$video->video_320) {
+            return response()->json(['status' => 404, 'errors' => ['The server video could not be found.']], 404);
+        }
+
+        $thumbnail = $request->file('thumbnail');
+        $imageInfo = @getimagesize($thumbnail->getRealPath());
+        if (!$imageInfo || !in_array($imageInfo[2], [IMAGETYPE_JPEG, IMAGETYPE_PNG], true)) {
+            return response()->json(['status' => 422, 'errors' => ['The preview must be a valid JPEG or PNG image.']], 422);
+        }
+
+        $needsThumbnail = !$this->previewImageExists($video->thumbnail, $video->storage_type);
+        $needsLandscape = !$this->previewImageExists($video->landscape, $video->storage_type);
+        if (!$needsThumbnail && !$needsLandscape) {
+            return response()->json(['status' => 200, 'already_complete' => true]);
+        }
+
+        $storageType = (int) $video->storage_type;
+        $diskName = [1 => 'public', 2 => 's3', 3 => 'wasabi'][$storageType] ?? null;
+        if (!$diskName) {
+            return response()->json(['status' => 422, 'errors' => ['This video uses an unsupported image storage type.']], 422);
+        }
+
+        $extension = $imageInfo[2] === IMAGETYPE_PNG ? 'png' : 'jpg';
+        $filename = 'vid_' . date('Y_m_d_') . Str::uuid() . '.' . $extension;
+        $path = $this->folder_content . '/' . $filename;
+        $stored = false;
+
+        try {
+            $stored = Storage::disk($diskName)->put($path, file_get_contents($thumbnail->getRealPath()), 'public');
+            if (!$stored) {
+                throw new Exception('Unable to store the generated preview image.');
+            }
+
+            $attached = DB::transaction(function () use ($video, $filename) {
+                $locked = Video::where('id', $video->id)->lockForUpdate()->first();
+                if (!$locked) {
+                    throw new Exception('The video was removed before its preview could be saved.');
+                }
+                $changed = false;
+                if (!$this->previewImageExists($locked->thumbnail, $locked->storage_type)) {
+                    $locked->thumbnail = $filename;
+                    $changed = true;
+                }
+                if (!$this->previewImageExists($locked->landscape, $locked->storage_type)) {
+                    $locked->landscape = $filename;
+                    $changed = true;
+                }
+                if ($changed) {
+                    $locked->save();
+                }
+                return $changed;
+            });
+            if (!$attached) {
+                Storage::disk($diskName)->delete($path);
+                return response()->json(['status' => 200, 'already_complete' => true]);
+            }
+        } catch (Exception $exception) {
+            if ($stored) {
+                Storage::disk($diskName)->delete($path);
+            }
+            return response()->json(['status' => 400, 'errors' => [$exception->getMessage()]], 400);
+        }
+
+        $video->refresh();
+        return response()->json([
+            'status' => 200,
+            'thumbnail' => $this->common->getImage($this->folder_content, $video->thumbnail, 'portrait', $video->storage_type),
+            'landscape' => $this->common->getImage($this->folder_content, $video->landscape, 'landscape', $video->storage_type),
+        ]);
+    }
+
+    private function previewImageExists($filename, $storageType)
+    {
+        $diskName = [1 => 'public', 2 => 's3', 3 => 'wasabi'][(int) $storageType] ?? null;
+        if (!$diskName || trim((string) $filename) === '') {
+            return false;
+        }
+
+        try {
+            return Storage::disk($diskName)->exists($this->folder_content . '/' . $filename);
+        } catch (Exception $exception) {
+            return false;
+        }
+    }
+
     public function create($type_id)
     {
         try {

@@ -105,6 +105,10 @@ Route::group(['middleware' => 'installation'], function () {
         // Video
         Route::get('video/{type_id}', [VideoController::class, 'index'])->name('video.index');
         Route::get('video/add/{type_id}', [VideoController::class, 'create'])->name('video.add');
+        Route::middleware('auth:admin')->prefix('video/previews')->name('video.previews.')->group(function () {
+            Route::get('{type_id}/missing', [VideoController::class, 'missingPreviews'])->name('missing');
+            Route::post('{type_id}', [VideoController::class, 'saveGeneratedPreview'])->name('save');
+        });
         Route::middleware('auth:admin')->prefix('video/bulk')->name('video.bulk.')->group(function () {
             Route::post('init', [VideoController::class, 'bulkUploadInit'])->name('init');
             Route::post('chunk', [VideoController::class, 'bulkUploadChunk'])->name('chunk');

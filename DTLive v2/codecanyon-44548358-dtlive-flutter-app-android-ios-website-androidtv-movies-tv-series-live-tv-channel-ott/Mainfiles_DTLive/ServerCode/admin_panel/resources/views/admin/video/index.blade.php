@@ -73,6 +73,27 @@
                         </div>
                     </div>
 
+                    <div class="border rounded p-3 mb-3" id="video_preview_repair"
+                        data-list-url="{{ route('admin.video.previews.missing', ['type_id' => $type['id']]) }}"
+                        data-save-url="{{ route('admin.video.previews.save', ['type_id' => $type['id']]) }}"
+                        data-csrf="{{ csrf_token() }}"
+                        data-demo-mode="{{ Demo_Mode() }}">
+                        <div class="d-flex flex-wrap align-items-center justify-content-between">
+                            <div class="mr-3">
+                                <strong>Video thumbnails</strong>
+                                <div class="small text-muted">Generate a preview frame from older videos that currently show the logo.</div>
+                            </div>
+                            <button type="button" class="btn btn-default mt-2 mt-md-0" id="generate_missing_video_previews">
+                                Generate missing thumbnails
+                            </button>
+                        </div>
+                        <div class="progress mt-3" style="height: 8px; display: none;" id="preview_repair_progress">
+                            <div class="progress-bar" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                        </div>
+                        <div class="small mt-2" id="preview_repair_summary" aria-live="polite"></div>
+                        <div class="mt-2" id="preview_repair_items"></div>
+                    </div>
+
                     <div class="table-responsive">
                         <table class="table table-striped table-bordered" id="datatable">
                             <thead>
@@ -162,6 +183,7 @@
 
 @section('pagescript')
     <script src="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.13/js/select2.min.js"></script>
+    <script src="{{ asset('/assets/js/repair-video-thumbnails.js') }}"></script>
     <script>
         $('#input_producer').select2();
         $('#channel_id').select2({ dropdownParent: $('#ReleasesModal') });

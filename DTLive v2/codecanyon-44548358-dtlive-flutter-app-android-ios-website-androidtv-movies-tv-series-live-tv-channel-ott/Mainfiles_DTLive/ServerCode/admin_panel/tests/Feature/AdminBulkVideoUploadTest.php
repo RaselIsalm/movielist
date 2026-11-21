@@ -261,6 +261,101 @@ class AdminBulkVideoUploadTest extends TestCase
         ])->assertUnauthorized();
     }
 
+    public function test_it_lists_server_videos_with_missing_or_unavailable_preview_files(): void
+    {
+        Storage::disk('public')->put('content/legacy.mp4', $this->validMp4('legacy video'));
+        Storage::disk('public')->put('content/present.jpg', 'existing image');
+        $missing = $this->createPreviewVideo(['video_320' => 'legacy.mp4']);
+        $broken = $this->createPreviewVideo([
+            'video_320' => 'legacy.mp4',
+            'thumbnail' => 'missing-file.jpg',
+            'landscape' => 'missing-file.jpg',
+        ]);
+        $complete = $this->createPreviewVideo([
+            'video_320' => 'legacy.mp4',
+            'thumbnail' => 'present.jpg',
+            'landscape' => 'present.jpg',
+        ]);
+        $this->createPreviewVideo(['video_upload_type' => 'external', 'video_320' => 'https://example.test/video.mp4']);
+
+        $response = $this->getJson(route('admin.video.previews.missing', ['type_id' => $this->type->id]));
+        $response->assertOk()->assertJson(['status' => 200, 'count' => 2]);
+        $this->assertSame(
+            [$missing->id, $broken->id],
+            array_column($response->json('items'), 'id')
+        );
+        $this->assertNotContains($complete->id, array_column($response->json('items'), 'id'));
+    }
+
+    public function test_it_saves_a_generated_preview_to_both_missing_video_image_fields(): void
+    {
+        $video = $this->createPreviewVideo(['video_320' => 'legacy.mp4']);
+
+        $response = $this->post(route('admin.video.previews.save', ['type_id' => $this->type->id]), [
+            'video_id' => $video->id,
+            'thumbnail' => UploadedFile::fake()->image('frame.jpg', 64, 36),
+        ], ['Accept' => 'application/json']);
+
+        $response->assertOk()->assertJsonPath('status', 200);
+        $video->refresh();
+        $this->assertNotEmpty($video->thumbnail);
+        $this->assertSame($video->thumbnail, $video->landscape);
+        Storage::disk('public')->assertExists('content/' . $video->thumbnail);
+        $this->assertStringContainsString('api/media/content/' . $video->thumbnail, $response->json('thumbnail'));
+    }
+
+    public function test_it_preserves_a_valid_existing_preview_and_saves_missing_landscape_to_the_image_storage_disk(): void
+    {
+        Storage::fake('s3');
+        Storage::disk('s3')->put('content/original.jpg', 'existing image');
+        $video = $this->createPreviewVideo([
+            'storage_type' => 2,
+            'video_storage_type' => 2,
+            'video_320' => 'cloud.mp4',
+            'thumbnail' => 'original.jpg',
+            'landscape' => '',
+        ]);
+
+        $this->post(route('admin.video.previews.save', ['type_id' => $this->type->id]), [
+            'video_id' => $video->id,
+            'thumbnail' => UploadedFile::fake()->image('frame.jpg', 64, 36),
+        ], ['Accept' => 'application/json'])->assertOk();
+
+        $video->refresh();
+        $this->assertSame('original.jpg', $video->thumbnail);
+        $this->assertNotEmpty($video->landscape);
+        Storage::disk('s3')->assertExists('content/' . $video->landscape);
+    }
+
+    public function test_it_rejects_invalid_generated_preview_files_and_other_content_types(): void
+    {
+        $video = $this->createPreviewVideo(['video_320' => 'legacy.mp4']);
+        $this->post(route('admin.video.previews.save', ['type_id' => $this->type->id]), [
+            'video_id' => $video->id,
+            'thumbnail' => UploadedFile::fake()->createWithContent('invalid.jpg', 'not an image'),
+        ], ['Accept' => 'application/json'])->assertUnprocessable();
+
+        $tvType = Type::create([
+            'name' => 'TV Shows', 'type' => 2, 'storage_type' => 1,
+            'icon' => '', 'sort_order' => 2, 'status' => 1,
+        ]);
+        $otherTypeVideo = $this->createPreviewVideo(['type_id' => $tvType->id, 'video_320' => 'other.mp4']);
+        $this->post(route('admin.video.previews.save', ['type_id' => $this->type->id]), [
+            'video_id' => $otherTypeVideo->id,
+            'thumbnail' => UploadedFile::fake()->image('frame.jpg', 64, 36),
+        ], ['Accept' => 'application/json'])->assertNotFound();
+    }
+
+    public function test_preview_repair_endpoints_require_an_authenticated_admin(): void
+    {
+        auth()->guard('admin')->logout();
+
+        $this->getJson(route('admin.video.previews.missing', ['type_id' => $this->type->id]))
+            ->assertUnauthorized();
+        $this->postJson(route('admin.video.previews.save', ['type_id' => $this->type->id]), [])
+            ->assertUnauthorized();
+    }
+
     private function uploadMp4(string $name, string $contents): string
     {
         $init = $this->postJson(route('admin.video.bulk.init'), [
@@ -301,6 +396,22 @@ class AdminBulkVideoUploadTest extends TestCase
     private function validMp4(string $payload): string
     {
         return "\x00\x00\x00\x18ftypisom\x00\x00\x02\x00isomiso2" . $payload;
+    }
+
+    private function createPreviewVideo(array $attributes = []): Video
+    {
+        return Video::create(array_merge([
+            'type_id' => $this->type->id,
+            'video_type' => 1,
+            'name' => 'Legacy preview test',
+            'storage_type' => 1,
+            'thumbnail' => '',
+            'landscape' => '',
+            'video_storage_type' => 1,
+            'video_upload_type' => 'server_video',
+            'video_320' => '',
+            'status' => 1,
+        ], $attributes));
     }
 
     private function createTestSchema(): void
