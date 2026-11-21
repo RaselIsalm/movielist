@@ -5,39 +5,32 @@ namespace App\Http\Middleware;
 use Closure;
 use Illuminate\Http\Request;
 use Exception;
-use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 
 class Installation
 {
     public function handle(Request $request, Closure $next)
     {
-        // Allow unverified admin access only when explicitly enabled on a local instance.
-        if (app()->environment('local') && filter_var(env('DTLIVE_ALLOW_UNVERIFIED_ADMIN', false), FILTER_VALIDATE_BOOLEAN)) {
+        // This opt-in disables only the installer/license gate; admin authentication remains active.
+        if (filter_var(config('installation.allow_unverified_admin', false), FILTER_VALIDATE_BOOLEAN)) {
             return $next($request);
         }
 
         try {
-
-            Artisan::call('config:clear');
-
             $verflyDomain = Demo_Domain();
             if ($verflyDomain == 1) {
 
                 return $next($request);
             } else {
 
-                $pc = env(base64_decode('UFVSQ0hBU0VfQ09ERQ=='));
-                $un = env(base64_decode('QlVZRVJfVVNFUk5BTUU='));
-                $status = env(base64_decode('UFVSQ0hBU0VfU1RBVFVT'));
+                $pc = config('installation.purchase_code');
+                $un = config('installation.buyer_username');
+                $status = config('installation.purchase_status');
 
                 if (!empty($pc) && !empty($un) && $status == 1) {
 
-                    if (@mysqli_connect(env('DB_HOST'), env('DB_USERNAME'), env('DB_PASSWORD'), env('DB_DATABASE'))) {
-
-                        return $next($request);
-                    } else {
-                        return redirect()->route('step0');
-                    }
+                    DB::connection()->getPdo();
+                    return $next($request);
                 } else {
                     return redirect()->route('step0');
                 }

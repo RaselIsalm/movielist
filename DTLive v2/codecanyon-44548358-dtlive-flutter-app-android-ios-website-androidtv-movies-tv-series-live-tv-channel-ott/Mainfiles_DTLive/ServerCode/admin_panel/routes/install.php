@@ -12,7 +12,15 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Install\InstallController;
 
-if (env('APP_PUBLIC_PATH')) {
+if (filter_var(config('installation.allow_unverified_admin', false), FILTER_VALIDATE_BOOLEAN)) {
+    $installPath = config('app.public_path') ? '/install' : '/';
+    Route::get($installPath, static function () {
+        return redirect()->route('admin.login');
+    })->name('step0');
+    return;
+}
+
+if (config('app.public_path')) {
     Route::get('/install', [InstallController::class, 'step0'])->name('step0');
 } else {
     Route::get('/', [InstallController::class, 'step0'])->name('step0');
