@@ -12,7 +12,11 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Install\InstallController;
 
-Route::get('/', [InstallController::class, 'step0'])->name('step0');
+if (env('APP_PUBLIC_PATH')) {
+    Route::get('/install', [InstallController::class, 'step0'])->name('step0');
+} else {
+    Route::get('/', [InstallController::class, 'step0'])->name('step0');
+}
 
 Route::get('step1', [InstallController::class, 'step1'])->name('step1');
 

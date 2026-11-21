@@ -54,6 +54,10 @@ return [
 
     'url' => env('APP_URL', null),
 
+    // Optional document root override for serving the Flutter web build while
+    // keeping the Laravel application outside the public web directory.
+    'public_path' => env('APP_PUBLIC_PATH'),
+
     'asset_url' => env('ASSET_URL', null),
 
     // Route public files through API middleware so Flutter Web gets CORS headers.

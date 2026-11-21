@@ -28,7 +28,7 @@ class InstallController extends Controller
         $url = $request->url();
         // Local Laravel servers already serve the app through its public front
         // controller. Redirecting to /public there produces a 404.
-        if (!app()->environment('local') && strpos($request->url(), '/public') === false) {
+        if (!app()->environment('local') && !config('app.public_path') && strpos($request->url(), '/public') === false) {
             return redirect($url . '/public');
         }
 

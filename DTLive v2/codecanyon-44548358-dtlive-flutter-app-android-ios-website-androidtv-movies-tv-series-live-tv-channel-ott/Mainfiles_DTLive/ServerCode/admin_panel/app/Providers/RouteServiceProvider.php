@@ -56,6 +56,21 @@ class RouteServiceProvider extends ServiceProvider
                 ->prefix('producer')
                 ->namespace($this->namespace)
                 ->group(base_path('routes/producer.php'));
+
+            if (config('app.public_path')) {
+                $serveFlutterApp = function () {
+                    $index = public_path('index.html');
+                    abort_unless(is_file($index), 404);
+
+                    return response()->file($index, [
+                        'Cache-Control' => 'no-cache, no-store, must-revalidate',
+                    ]);
+                };
+
+                Route::middleware('web')->get('/', $serveFlutterApp)->name('flutter.home');
+                Route::middleware('web')->get('/{path}', $serveFlutterApp)
+                    ->where('path', '^(?!api(?:/|$)|admin(?:/|$)|producer(?:/|$)|install(?:/|$)|step[0-9]*(?:/|$)|purchase_code(?:/|$)|update_purchase_code(?:/|$)|database_installation(?:/|$)|backupdb(?:/|$)|import_sql(?:/|$)|system_settings(?:/|$)|clearcache(?:/|$)|version(?:/|$)|page(?:/|$)|lang(?:/|$)|details(?:/|$)|shorts(?:/|$)).+');
+            }
         });
     }
 
