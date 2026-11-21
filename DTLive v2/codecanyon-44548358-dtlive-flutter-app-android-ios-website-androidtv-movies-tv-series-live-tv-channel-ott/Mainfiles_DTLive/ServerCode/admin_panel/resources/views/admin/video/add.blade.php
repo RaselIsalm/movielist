@@ -30,7 +30,88 @@
                 </div>
             </div>
 
-            <form id="save_video" enctype="multipart/form-data">
+            @if($type['type'] == 1)
+                <div class="card custom-border-card mb-3">
+                    <div class="card-body d-flex flex-wrap align-items-center justify-content-between">
+                        <div>
+                            <strong>Upload multiple movies</strong>
+                            <div class="text-muted">Choose many MP4 files, set shared details once, and save them together.</div>
+                        </div>
+                        <div class="mt-2 mt-md-0">
+                            <button type="button" class="btn btn-default" id="show_bulk_video_mode">Bulk upload</button>
+                            <button type="button" class="btn btn-default-white ml-2" id="show_single_video_mode">Single upload</button>
+                        </div>
+                    </div>
+                </div>
+
+                <section id="bulk_video_mode"
+                    data-init-url="{{ route('admin.video.bulk.init') }}"
+                    data-chunk-url="{{ route('admin.video.bulk.chunk') }}"
+                    data-remove-url="{{ route('admin.video.bulk.remove') }}"
+                    data-save-url="{{ route('admin.video.bulk.save') }}"
+                    data-type-id="{{ $type['id'] }}"
+                    data-csrf="{{ csrf_token() }}"
+                    data-demo-mode="{{ Demo_Mode() }}"
+                    data-index-url="{{ route('admin.video.index', ['type_id' => $type['id']]) }}">
+                    <div class="card custom-border-card mb-3">
+                        <div class="card-header"><i class="fa-solid fa-list-check"></i><span>Shared video details</span></div>
+                        <div class="card-body py-2">
+                            <div class="form-row">
+                                <div class="col-md-4">
+                                    <div class="form-group">
+                                        <label>Title <span class="text-danger">*</span></label>
+                                        <input type="text" id="bulk_video_title" class="form-control" maxlength="255" placeholder="Title for every video in this batch">
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-group">
+                                        <label>{{__('label.category')}} <span class="text-danger">*</span></label>
+                                        <select id="bulk_video_category" class="form-control">
+                                            <option value="">{{__('label.select_category')}}</option>
+                                            @foreach ($category as $value)
+                                                <option value="{{ $value->id }}">{{ $value->name }}</option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-group">
+                                        <label>{{__('label.language')}} <span class="text-danger">*</span></label>
+                                        <select id="bulk_video_language" class="form-control">
+                                            <option value="">{{__('label.select_language')}}</option>
+                                            @foreach ($language as $value)
+                                                <option value="{{ $value->id }}">{{ $value->name }}</option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="form-group mb-0">
+                                <label for="bulk_video_files">Choose MP4 videos <span class="text-danger">*</span></label>
+                                <input type="file" id="bulk_video_files" class="form-control" accept=".mp4,video/mp4" multiple>
+                                <small class="form-text text-muted">Uploads start automatically, one file at a time. Keep this page open until the batch is ready to save.</small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card custom-border-card mb-3">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <span><i class="fa-solid fa-cloud-arrow-up"></i> Upload queue</span>
+                            <span id="bulk_video_summary" class="text-muted">No files selected</span>
+                        </div>
+                        <div class="card-body py-2">
+                            <div id="bulk_video_file_list" aria-live="polite"></div>
+                            <div id="bulk_video_empty" class="text-muted">Select one or more MP4 files to begin.</div>
+                        </div>
+                        <div class="card-footer">
+                            <button type="button" class="btn btn-default mw-120" id="save_bulk_videos" disabled><i class="fa-solid fa-floppy-disk fa-lg mr-2"></i>{{__('label.save')}} batch</button>
+                            <a href="{{route('admin.video.index', ['type_id' => $type['id']])}}" class="btn btn-cancel mw-120 ml-2">{{__('label.cancel')}}</a>
+                        </div>
+                    </div>
+                </section>
+            @endif
+
+            <form id="save_video" enctype="multipart/form-data" @if($type['type'] == 1) style="display:none;" @endif>
                 <input type="hidden" name="type_id" value="{{ $type['id'] }}">
                 <input type="hidden" name="video_type" value="{{ $type['type'] }}">
                 <!-- Title-Card -->
@@ -603,6 +684,9 @@
     <!-- Chunk JS -->
     <script src="{{ asset('/assets/js/plupload.full.min.js')}}"></script>
     <script src="{{ asset('/assets/js/common.js')}}"></script>
+    @if($type['type'] == 1)
+        <script src="{{ asset('/assets/js/bulk-video-upload.js') }}"></script>
+    @endif
 
     <script>
         var d = new Date();

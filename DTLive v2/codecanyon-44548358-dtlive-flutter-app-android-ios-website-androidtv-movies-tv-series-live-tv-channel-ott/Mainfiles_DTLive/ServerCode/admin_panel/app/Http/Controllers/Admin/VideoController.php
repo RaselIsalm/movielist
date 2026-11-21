@@ -23,6 +23,9 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Validator;
 use Exception;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 // Video Type = 1- Movies, 2- TVShow, 3- Category, 4-Language, 5- Upcoming Content, 6- Channel Content, 7- Kids Content, 8- Shorts
 // Video Upload Type = server_video, external, youtube, live_stream_url
@@ -176,6 +179,393 @@ class VideoController extends Controller
             return response()->json(['status' => 400, 'errors' => $e->getMessage()]);
         }
     }
+
+    /** Start a private, admin-scoped staged upload for the bulk movie uploader. */
+    public function bulkUploadInit(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'upload_name' => 'required|string|max:255',
+            'file_size' => 'required|integer|min:1',
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['status' => 400, 'errors' => $validator->errors()->all()], 422);
+        }
+
+        $name = trim($request->input('upload_name'));
+        if (strtolower(pathinfo($name, PATHINFO_EXTENSION)) !== 'mp4') {
+            return response()->json(['status' => 400, 'errors' => ['Only MP4 video files are supported.']], 422);
+        }
+
+        $this->cleanupExpiredBulkUploads();
+
+        $uploadId = (string) Str::uuid();
+        $upload = [
+            'name' => basename($name),
+            'size' => (int) $request->input('file_size'),
+            'chunk_count' => null,
+            'complete' => false,
+            'created_at' => time(),
+        ];
+        $uploads = session()->get('bulk_video_uploads', []);
+        $uploads[$uploadId] = $upload;
+        session()->put('bulk_video_uploads', $uploads);
+
+        $directory = $this->bulkUploadDirectory($uploadId);
+        if (!is_dir($directory) && !mkdir($directory, 0750, true) && !is_dir($directory)) {
+            unset($uploads[$uploadId]);
+            session()->put('bulk_video_uploads', $uploads);
+            return response()->json(['status' => 500, 'errors' => ['Unable to prepare temporary upload storage.']], 500);
+        }
+
+        return response()->json([
+            'status' => 200,
+            'upload_id' => $uploadId,
+            'chunk_size' => 1024 * 1024,
+        ]);
+    }
+
+    /** Receive one retry-safe chunk and assemble the file when every chunk arrives. */
+    public function bulkUploadChunk(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'upload_id' => 'required|uuid',
+            'chunk_index' => 'required|integer|min:0',
+            'chunk_count' => 'required|integer|min:1|max:100000',
+            'chunk' => 'required|file|max:1024',
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['status' => 400, 'errors' => $validator->errors()->all()], 422);
+        }
+
+        $uploadId = $request->input('upload_id');
+        $uploads = session()->get('bulk_video_uploads', []);
+        $upload = $uploads[$uploadId] ?? null;
+        if (!$upload) {
+            return response()->json(['status' => 404, 'errors' => ['Upload session not found.']], 404);
+        }
+        if ($upload['complete']) {
+            return response()->json(['status' => 200, 'complete' => true, 'uploaded_bytes' => $upload['size']]);
+        }
+
+        $chunkIndex = (int) $request->input('chunk_index');
+        $chunkCount = (int) $request->input('chunk_count');
+        $chunkSize = 1024 * 1024;
+        $expectedCount = (int) ceil($upload['size'] / $chunkSize);
+        if ($chunkIndex >= $chunkCount || $chunkCount !== $expectedCount) {
+            return response()->json(['status' => 400, 'errors' => ['Invalid chunk sequence.']], 422);
+        }
+        if ($upload['chunk_count'] !== null && $upload['chunk_count'] !== $chunkCount) {
+            return response()->json(['status' => 409, 'errors' => ['Chunk count changed during upload.']], 409);
+        }
+
+        $expectedBytes = min($chunkSize, $upload['size'] - ($chunkIndex * $chunkSize));
+        $chunk = $request->file('chunk');
+        if ($chunk->getSize() !== $expectedBytes) {
+            return response()->json(['status' => 422, 'errors' => ['The uploaded chunk has an invalid size.']], 422);
+        }
+
+        $directory = $this->bulkUploadDirectory($uploadId);
+        $chunkPath = $directory . DIRECTORY_SEPARATOR . $uploadId . '.chunk.' . $chunkIndex;
+        if (is_file($chunkPath)) {
+            if (filesize($chunkPath) !== $expectedBytes || hash_file('sha256', $chunkPath) !== hash_file('sha256', $chunk->getRealPath())) {
+                return response()->json(['status' => 409, 'errors' => ['Chunk retry did not match the saved chunk.']], 409);
+            }
+        } else {
+            $chunk->move($directory, basename($chunkPath));
+        }
+
+        $upload['chunk_count'] = $chunkCount;
+        $uploads[$uploadId] = $upload;
+        session()->put('bulk_video_uploads', $uploads);
+
+        $allChunksPresent = true;
+        for ($index = 0; $index < $chunkCount; $index++) {
+            if (!is_file($directory . DIRECTORY_SEPARATOR . $uploadId . '.chunk.' . $index)) {
+                $allChunksPresent = false;
+                break;
+            }
+        }
+
+        if ($allChunksPresent) {
+            $assembledPath = $directory . DIRECTORY_SEPARATOR . $uploadId . '.assembling';
+            $output = fopen($assembledPath, 'wb');
+            if ($output === false) {
+                return response()->json(['status' => 500, 'errors' => ['Unable to assemble uploaded video.']], 500);
+            }
+
+            $assembledBytes = 0;
+            try {
+                for ($index = 0; $index < $chunkCount; $index++) {
+                    $input = fopen($directory . DIRECTORY_SEPARATOR . $uploadId . '.chunk.' . $index, 'rb');
+                    if ($input === false) {
+                        throw new Exception('Unable to read an uploaded chunk.');
+                    }
+                    $assembledBytes += stream_copy_to_stream($input, $output);
+                    fclose($input);
+                }
+            } catch (Exception $exception) {
+                fclose($output);
+                @unlink($assembledPath);
+                return response()->json(['status' => 500, 'errors' => [$exception->getMessage()]], 500);
+            }
+            fclose($output);
+
+            if ($assembledBytes !== $upload['size']) {
+                @unlink($assembledPath);
+                return response()->json(['status' => 422, 'errors' => ['Uploaded video size did not match the selected file.']], 422);
+            }
+
+            $input = fopen($assembledPath, 'rb');
+            $header = $input ? fread($input, 12) : '';
+            if ($input) {
+                fclose($input);
+            }
+            if (strlen($header) < 8 || substr($header, 4, 4) !== 'ftyp') {
+                @unlink($assembledPath);
+                foreach (glob($directory . DIRECTORY_SEPARATOR . $uploadId . '.chunk.*') ?: [] as $path) {
+                    @unlink($path);
+                }
+                unset($uploads[$uploadId]);
+                session()->put('bulk_video_uploads', $uploads);
+                return response()->json(['status' => 422, 'errors' => ['The selected file is not a valid MP4 video.']], 422);
+            }
+
+            $finalPath = $directory . DIRECTORY_SEPARATOR . $uploadId . '.mp4';
+            if (!rename($assembledPath, $finalPath)) {
+                @unlink($assembledPath);
+                return response()->json(['status' => 500, 'errors' => ['Unable to finalize uploaded video.']], 500);
+            }
+            foreach (glob($directory . DIRECTORY_SEPARATOR . $uploadId . '.chunk.*') ?: [] as $path) {
+                @unlink($path);
+            }
+
+            $upload['complete'] = true;
+            $uploads[$uploadId] = $upload;
+            session()->put('bulk_video_uploads', $uploads);
+        }
+
+        return response()->json([
+            'status' => 200,
+            'complete' => $upload['complete'],
+            'uploaded_bytes' => $upload['complete'] ? $upload['size'] : null,
+        ]);
+    }
+
+    /** Remove a staged upload, including partially received chunks. */
+    public function bulkUploadRemove(Request $request)
+    {
+        $validator = Validator::make($request->all(), ['upload_id' => 'required|uuid']);
+        if ($validator->fails()) {
+            return response()->json(['status' => 400, 'errors' => $validator->errors()->all()], 422);
+        }
+
+        $uploadId = $request->input('upload_id');
+        $uploads = session()->get('bulk_video_uploads', []);
+        unset($uploads[$uploadId]);
+        session()->put('bulk_video_uploads', $uploads);
+        $this->deleteBulkUploadDirectory($uploadId);
+
+        return response()->json(['status' => 200]);
+    }
+
+    /** Save every completed staged movie with the batch's shared metadata. */
+    public function bulkUploadSave(Request $request)
+    {
+        @set_time_limit(0);
+
+        $validator = Validator::make($request->all(), [
+            'title' => 'required|string|min:2|max:255',
+            'type_id' => 'required|integer',
+            'category_id' => 'required|integer',
+            'language_id' => 'required|integer',
+            'upload_ids' => 'required|array|min:1',
+            'upload_ids.*' => 'required|uuid|distinct',
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['status' => 400, 'errors' => $validator->errors()->all()], 422);
+        }
+
+        $type = Type::where('id', $request->input('type_id'))->where('type', 1)->where('status', 1)->first();
+        if (!$type) {
+            return response()->json(['status' => 400, 'errors' => ['Bulk upload is available for active Movies content only.']], 422);
+        }
+        if (!Category::where('id', $request->input('category_id'))->where('status', 1)->exists()) {
+            return response()->json(['status' => 400, 'errors' => ['Select an active category.']], 422);
+        }
+        if (!Language::where('id', $request->input('language_id'))->where('status', 1)->exists()) {
+            return response()->json(['status' => 400, 'errors' => ['Select an active language.']], 422);
+        }
+
+        $uploadIds = $request->input('upload_ids');
+        $canonicalIds = $uploadIds;
+        sort($canonicalIds, SORT_STRING);
+        $batchKey = hash('sha256', implode('|', $canonicalIds));
+        $receipts = session()->get('bulk_video_receipts', []);
+        if (isset($receipts[$batchKey]) && $receipts[$batchKey]['expires_at'] > time()) {
+            return response()->json($receipts[$batchKey]['response']);
+        }
+
+        $uploads = session()->get('bulk_video_uploads', []);
+        $batch = [];
+        foreach ($uploadIds as $uploadId) {
+            $upload = $uploads[$uploadId] ?? null;
+            $videoPath = $this->bulkUploadDirectory($uploadId) . DIRECTORY_SEPARATOR . $uploadId . '.mp4';
+            if (!$upload || !$upload['complete'] || !is_file($videoPath) || filesize($videoPath) !== $upload['size']) {
+                return response()->json(['status' => 400, 'errors' => ['Every selected video must finish uploading before the batch can be saved.']], 422);
+            }
+            $batch[] = ['id' => $uploadId, 'upload' => $upload, 'path' => $videoPath];
+        }
+
+        $storageType = (int) Storage_Type();
+        $diskName = [1 => 'public', 2 => 's3', 3 => 'wasabi'][$storageType] ?? null;
+        if (!$diskName) {
+            return response()->json(['status' => 500, 'errors' => ['The configured video storage type is not supported.']], 500);
+        }
+
+        $savedPaths = [];
+        try {
+            $preparedBatch = [];
+            foreach ($batch as $item) {
+                $filename = 'vid_' . date('Y_m_d_') . Str::uuid() . '.mp4';
+                $targetPath = $this->folder_content . '/' . $filename;
+                $savedPaths[] = $targetPath;
+                $stream = fopen($item['path'], 'rb');
+                if ($stream === false) {
+                    throw new Exception('Unable to read a completed staged video.');
+                }
+                try {
+                    $stored = Storage::disk($diskName)->put($targetPath, $stream);
+                } finally {
+                    fclose($stream);
+                }
+                if (!$stored) {
+                    throw new Exception('Unable to store video ' . $item['upload']['name'] . '.');
+                }
+                $item['filename'] = $filename;
+                $item['target_path'] = $targetPath;
+                $preparedBatch[] = $item;
+            }
+            $batch = $preparedBatch;
+
+            $videos = DB::transaction(function () use ($batch, $request, $type, $storageType) {
+                $created = [];
+                foreach ($batch as $item) {
+                    $created[] = Video::create([
+                        'type_id' => $type->id,
+                        'video_type' => $type->type,
+                        'channel_id' => 0,
+                        'producer_id' => 0,
+                        'category_id' => (string) $request->input('category_id'),
+                        'language_id' => (string) $request->input('language_id'),
+                        'cast_id' => '',
+                        'name' => trim($request->input('title')),
+                        'storage_type' => $storageType,
+                        'thumbnail' => '',
+                        'landscape' => '',
+                        'description' => '',
+                        'video_storage_type' => $storageType,
+                        'video_upload_type' => 'server_video',
+                        'video_320' => $item['filename'],
+                        'video_480' => '',
+                        'video_720' => '',
+                        'video_1080' => '',
+                        'video_extension' => 'mp4',
+                        'video_duration' => 0,
+                        'trailer_storage_type' => $storageType,
+                        'trailer_type' => '',
+                        'trailer_url' => '',
+                        'subtitle_storage_type' => $storageType,
+                        'subtitle_type' => 'server_video',
+                        'subtitle_lang_1' => '',
+                        'subtitle_lang_2' => '',
+                        'subtitle_lang_3' => '',
+                        'subtitle_1' => '',
+                        'subtitle_2' => '',
+                        'subtitle_3' => '',
+                        'release_date' => '',
+                        'is_premium' => 0,
+                        'is_title' => 0,
+                        'is_download' => 0,
+                        'is_comment' => 0,
+                        'is_like' => 0,
+                        'is_rent' => 0,
+                        'price' => 0,
+                        'rent_day' => 0,
+                        'avg_rating' => 0,
+                        'total_review' => 0,
+                        'total_view' => 0,
+                        'total_like' => 0,
+                        'status' => 1,
+                    ]);
+                }
+                return $created;
+            });
+        } catch (Exception $exception) {
+            foreach ($savedPaths as $path) {
+                Storage::disk($diskName)->delete($path);
+            }
+            return response()->json(['status' => 400, 'errors' => [$exception->getMessage()]], 400);
+        }
+
+        $response = [
+            'status' => 200,
+            'success' => count($videos) . ' videos added successfully.',
+            'count' => count($videos),
+            'video_ids' => array_map(function ($video) { return $video->id; }, $videos),
+        ];
+        foreach ($uploadIds as $uploadId) {
+            $this->deleteBulkUploadDirectory($uploadId);
+            unset($uploads[$uploadId]);
+        }
+        session()->put('bulk_video_uploads', $uploads);
+        $receipts[$batchKey] = ['expires_at' => time() + 86400, 'response' => $response];
+        foreach ($receipts as $key => $receipt) {
+            if (($receipt['expires_at'] ?? 0) <= time()) {
+                unset($receipts[$key]);
+            }
+        }
+        session()->put('bulk_video_receipts', $receipts);
+
+        return response()->json($response);
+    }
+
+    private function bulkUploadDirectory($uploadId)
+    {
+        return storage_path('app/bulk-video-staging/' . Auth::guard('admin')->id() . '/' . $uploadId);
+    }
+
+    private function deleteBulkUploadDirectory($uploadId)
+    {
+        $directory = $this->bulkUploadDirectory($uploadId);
+        if (is_dir($directory)) {
+            foreach (glob($directory . DIRECTORY_SEPARATOR . '*') ?: [] as $path) {
+                if (is_file($path)) {
+                    @unlink($path);
+                }
+            }
+            @rmdir($directory);
+        }
+    }
+
+    private function cleanupExpiredBulkUploads()
+    {
+        $adminDirectory = storage_path('app/bulk-video-staging/' . Auth::guard('admin')->id());
+        if (!is_dir($adminDirectory)) {
+            return;
+        }
+
+        foreach (glob($adminDirectory . DIRECTORY_SEPARATOR . '*', GLOB_ONLYDIR) ?: [] as $directory) {
+            if (filemtime($directory) < time() - 86400) {
+                foreach (glob($directory . DIRECTORY_SEPARATOR . '*') ?: [] as $path) {
+                    if (is_file($path)) {
+                        @unlink($path);
+                    }
+                }
+                @rmdir($directory);
+            }
+        }
+    }
+
     public function store(Request $request)
     {
         try {
