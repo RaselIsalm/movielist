@@ -7,6 +7,7 @@
     const config = {
         initUrl: $section.data('init-url'),
         chunkUrl: $section.data('chunk-url'),
+        thumbnailUrl: $section.data('thumbnail-url'),
         removeUrl: $section.data('remove-url'),
         saveUrl: $section.data('save-url'),
         typeId: $section.data('type-id'),
@@ -54,6 +55,81 @@
         return (bytes / Math.pow(1024, index)).toFixed(index ? 1 : 0) + ' ' + units[index];
     }
 
+    function createPoster(file) {
+        return new Promise(function (resolve, reject) {
+            const video = document.createElement('video');
+            const objectUrl = URL.createObjectURL(file);
+            let timeout;
+            let settled = false;
+
+            function finish(error, blob) {
+                if (settled) return;
+                settled = true;
+                window.clearTimeout(timeout);
+                video.pause();
+                video.removeAttribute('src');
+                video.load();
+                URL.revokeObjectURL(objectUrl);
+                if (error) reject(error);
+                else resolve(blob);
+            }
+
+            function captureFrame() {
+                if (settled) return;
+                if (!video.videoWidth || !video.videoHeight) {
+                    finish(new Error('This video could not provide a preview frame. Try an MP4 encoded with H.264 video.'));
+                    return;
+                }
+
+                const maxWidth = 640;
+                const scale = Math.min(1, maxWidth / video.videoWidth);
+                const canvas = document.createElement('canvas');
+                canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+                canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+                const context = canvas.getContext('2d');
+                if (!context) {
+                    finish(new Error('Your browser could not create the video preview image.'));
+                    return;
+                }
+                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                canvas.toBlob(function (blob) {
+                    if (!blob) {
+                        finish(new Error('Could not create a preview image from this video.'));
+                        return;
+                    }
+                    finish(null, blob);
+                }, 'image/jpeg', 0.86);
+            }
+
+            video.muted = true;
+            video.playsInline = true;
+            video.preload = 'metadata';
+            video.onloadedmetadata = function () {
+                const duration = Number.isFinite(video.duration) ? video.duration : 0;
+                const captureAt = duration > 0.2 ? Math.min(4, duration / 2) : 0;
+                if (captureAt > 0) {
+                    video.onseeked = captureFrame;
+                    try {
+                        video.currentTime = captureAt;
+                    } catch (error) {
+                        finish(new Error('Could not seek to a preview frame in this video.'));
+                    }
+                } else {
+                    video.onloadeddata = captureFrame;
+                    if (video.readyState >= 2) captureFrame();
+                }
+            };
+            video.onerror = function () {
+                finish(new Error('This browser cannot decode the video to create its preview. Try an H.264 MP4.'));
+            };
+            timeout = window.setTimeout(function () {
+                finish(new Error('Preview generation timed out. Try an H.264 MP4 video.'));
+            }, 30000);
+            video.src = objectUrl;
+            video.load();
+        });
+    }
+
     function renderQueue() {
         const $list = $('#bulk_video_file_list').empty();
         const total = queue.length;
@@ -68,6 +144,9 @@
             const $row = $('<div class="border rounded p-2 mb-2"></div>');
             const $heading = $('<div class="d-flex flex-wrap justify-content-between align-items-center"></div>');
             const $description = $('<div class="mr-2"></div>');
+            if (item.posterUrl) {
+                $description.append($('<img class="rounded mr-2" alt="Video preview" style="width:72px;height:48px;object-fit:cover;vertical-align:middle;">').attr('src', item.posterUrl));
+            }
             $description.append($('<strong></strong>').text(item.file.name));
             $description.append($('<small class="text-muted d-block"></small>').text(formatSize(item.file.size) + ' · ' + item.label));
             $heading.append($description);
@@ -121,6 +200,14 @@
         item.error = '';
         renderQueue();
 
+        if (!item.poster) {
+            item.label = 'Creating preview';
+            renderQueue();
+            item.poster = await createPoster(item.file);
+            item.posterUrl = URL.createObjectURL(item.poster);
+            renderQueue();
+        }
+
         if (item.uploadId) {
             const cleanup = new FormData();
             cleanup.append('upload_id', item.uploadId);
@@ -155,6 +242,13 @@
             renderQueue();
         }
 
+        item.label = 'Saving preview';
+        renderQueue();
+        const posterData = new FormData();
+        posterData.append('upload_id', item.uploadId);
+        posterData.append('thumbnail', item.poster, item.file.name.replace(/\.[^/.]+$/, '') + '.jpg');
+        await request(config.thumbnailUrl, posterData);
+
         item.status = 'uploaded';
         item.label = 'Ready to save';
         item.progress = 100;
@@ -187,6 +281,7 @@
             body.append('upload_id', item.uploadId);
             try { await request(config.removeUrl, body); } catch (error) { /* expiry cleanup removes abandoned stages */ }
         }
+        if (item.posterUrl) URL.revokeObjectURL(item.posterUrl);
         queue = queue.filter(function (candidate) { return candidate.key !== item.key; });
         renderQueue();
     }

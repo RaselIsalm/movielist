@@ -81,7 +81,10 @@ class AdminBulkVideoUploadTest extends TestCase
             $this->assertSame(1, $video->status);
             $this->assertSame(0, $video->is_premium);
             $this->assertSame(0, $video->is_rent);
+            $this->assertNotEmpty($video->thumbnail);
+            $this->assertSame($video->thumbnail, $video->landscape);
             Storage::disk('public')->assertExists('content/' . $video->video_320);
+            Storage::disk('public')->assertExists('content/' . $video->thumbnail);
         }
 
         $response->assertJsonPath('video_ids.0', Video::orderBy('id')->value('id'));
@@ -119,6 +122,7 @@ class AdminBulkVideoUploadTest extends TestCase
         $video = Video::firstOrFail();
         $this->assertSame(2, $video->video_storage_type);
         Storage::disk('s3')->assertExists('content/' . $video->video_320);
+        Storage::disk('s3')->assertExists('content/' . $video->thumbnail);
     }
 
     public function test_it_uses_the_configured_wasabi_storage_disk(): void
@@ -132,6 +136,7 @@ class AdminBulkVideoUploadTest extends TestCase
         $video = Video::firstOrFail();
         $this->assertSame(3, $video->video_storage_type);
         Storage::disk('wasabi')->assertExists('content/' . $video->video_320);
+        Storage::disk('wasabi')->assertExists('content/' . $video->thumbnail);
     }
 
     public function test_it_rejects_a_save_until_every_upload_is_complete(): void
@@ -142,6 +147,28 @@ class AdminBulkVideoUploadTest extends TestCase
 
         $this->postJson(route('admin.video.bulk.save'), $this->batchPayload([$init->json('upload_id')]))
             ->assertUnprocessable();
+        $this->assertSame(0, Video::count());
+    }
+
+    public function test_it_requires_a_valid_preview_image_before_saving(): void
+    {
+        $init = $this->postJson(route('admin.video.bulk.init'), [
+            'upload_name' => 'no-poster.mp4', 'file_size' => strlen($this->validMp4('video')),
+        ])->assertOk();
+        $uploadId = $init->json('upload_id');
+        $contents = $this->validMp4('video');
+        $this->post(route('admin.video.bulk.chunk'), [
+            'upload_id' => $uploadId,
+            'chunk_index' => 0,
+            'chunk_count' => 1,
+            'chunk' => UploadedFile::fake()->createWithContent('no-poster.mp4', $contents),
+        ], ['Accept' => 'application/json'])->assertOk();
+
+        $this->postJson(route('admin.video.bulk.save'), $this->batchPayload([$uploadId]))->assertUnprocessable();
+        $this->post(route('admin.video.bulk.thumbnail'), [
+            'upload_id' => $uploadId,
+            'thumbnail' => UploadedFile::fake()->createWithContent('invalid.jpg', 'not an image'),
+        ], ['Accept' => 'application/json'])->assertUnprocessable();
         $this->assertSame(0, Video::count());
     }
 
@@ -202,6 +229,7 @@ class AdminBulkVideoUploadTest extends TestCase
             'chunk_count' => 2,
             'chunk' => UploadedFile::fake()->createWithContent('large.mp4', substr($contents, $chunkSize)),
         ], ['Accept' => 'application/json'])->assertOk()->assertJson(['complete' => true]);
+        $this->uploadPoster($uploadId);
 
         $this->postJson(route('admin.video.bulk.save'), $this->batchPayload([$uploadId]))
             ->assertOk()->assertJson(['status' => 200, 'count' => 1]);
@@ -246,8 +274,17 @@ class AdminBulkVideoUploadTest extends TestCase
             'chunk_count' => 1,
             'chunk' => UploadedFile::fake()->createWithContent($name, $contents),
         ], ['Accept' => 'application/json'])->assertOk()->assertJson(['complete' => true]);
+        $this->uploadPoster($uploadId);
 
         return $uploadId;
+    }
+
+    private function uploadPoster(string $uploadId): void
+    {
+        $this->post(route('admin.video.bulk.thumbnail'), [
+            'upload_id' => $uploadId,
+            'thumbnail' => UploadedFile::fake()->image('poster.jpg', 64, 36),
+        ], ['Accept' => 'application/json'])->assertOk();
     }
 
     private function batchPayload(array $uploadIds): array

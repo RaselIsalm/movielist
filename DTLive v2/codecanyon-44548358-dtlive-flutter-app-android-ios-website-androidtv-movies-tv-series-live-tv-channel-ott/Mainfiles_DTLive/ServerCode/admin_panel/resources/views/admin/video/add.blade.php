@@ -47,6 +47,7 @@
                 <section id="bulk_video_mode"
                     data-init-url="{{ route('admin.video.bulk.init') }}"
                     data-chunk-url="{{ route('admin.video.bulk.chunk') }}"
+                    data-thumbnail-url="{{ route('admin.video.bulk.thumbnail') }}"
                     data-remove-url="{{ route('admin.video.bulk.remove') }}"
                     data-save-url="{{ route('admin.video.bulk.save') }}"
                     data-type-id="{{ $type['id'] }}"
@@ -89,7 +90,7 @@
                             <div class="form-group mb-0">
                                 <label for="bulk_video_files">Choose MP4 videos <span class="text-danger">*</span></label>
                                 <input type="file" id="bulk_video_files" class="form-control" accept=".mp4,video/mp4" multiple>
-                                <small class="form-text text-muted">Uploads start automatically, one file at a time. Keep this page open until the batch is ready to save.</small>
+                                <small class="form-text text-muted">A preview frame is captured from each video automatically. Uploads then run one file at a time; keep this page open until the batch is ready to save.</small>
                             </div>
                         </div>
                     </div>

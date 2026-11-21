@@ -351,6 +351,45 @@ class VideoController extends Controller
         ]);
     }
 
+    /** Save the browser-generated poster frame alongside its staged video. */
+    public function bulkUploadThumbnail(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'upload_id' => 'required|uuid',
+            'thumbnail' => 'required|image|mimes:jpeg,jpg,png|max:5120',
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['status' => 400, 'errors' => $validator->errors()->all()], 422);
+        }
+
+        $thumbnail = $request->file('thumbnail');
+        $imageInfo = @getimagesize($thumbnail->getRealPath());
+        if (!$imageInfo || !in_array($imageInfo[2], [IMAGETYPE_JPEG, IMAGETYPE_PNG], true)) {
+            return response()->json(['status' => 400, 'errors' => ['The preview must be a valid JPEG or PNG image.']], 422);
+        }
+
+        $uploadId = $request->input('upload_id');
+        $uploads = session()->get('bulk_video_uploads', []);
+        $upload = $uploads[$uploadId] ?? null;
+        if (!$upload || !$upload['complete']) {
+            return response()->json(['status' => 404, 'errors' => ['Finish the video upload before sending its preview image.']], 404);
+        }
+
+        $directory = $this->bulkUploadDirectory($uploadId);
+        $posterName = $uploadId . '.poster.jpg';
+        $posterPath = $directory . DIRECTORY_SEPARATOR . $posterName;
+        if (is_file($posterPath)) {
+            @unlink($posterPath);
+        }
+        $thumbnail->move($directory, $posterName);
+
+        $upload['poster_complete'] = true;
+        $uploads[$uploadId] = $upload;
+        session()->put('bulk_video_uploads', $uploads);
+
+        return response()->json(['status' => 200]);
+    }
+
     /** Remove a staged upload, including partially received chunks. */
     public function bulkUploadRemove(Request $request)
     {
@@ -410,10 +449,14 @@ class VideoController extends Controller
         foreach ($uploadIds as $uploadId) {
             $upload = $uploads[$uploadId] ?? null;
             $videoPath = $this->bulkUploadDirectory($uploadId) . DIRECTORY_SEPARATOR . $uploadId . '.mp4';
+            $posterPath = $this->bulkUploadDirectory($uploadId) . DIRECTORY_SEPARATOR . $uploadId . '.poster.jpg';
             if (!$upload || !$upload['complete'] || !is_file($videoPath) || filesize($videoPath) !== $upload['size']) {
                 return response()->json(['status' => 400, 'errors' => ['Every selected video must finish uploading before the batch can be saved.']], 422);
             }
-            $batch[] = ['id' => $uploadId, 'upload' => $upload, 'path' => $videoPath];
+            if (empty($upload['poster_complete']) || !is_file($posterPath)) {
+                return response()->json(['status' => 400, 'errors' => ['A preview image must be generated for every video before saving.']], 422);
+            }
+            $batch[] = ['id' => $uploadId, 'upload' => $upload, 'path' => $videoPath, 'poster_path' => $posterPath];
         }
 
         $storageType = (int) Storage_Type();
@@ -443,6 +486,23 @@ class VideoController extends Controller
                 }
                 $item['filename'] = $filename;
                 $item['target_path'] = $targetPath;
+
+                $posterFilename = 'vid_' . date('Y_m_d_') . Str::uuid() . '.jpg';
+                $posterTargetPath = $this->folder_content . '/' . $posterFilename;
+                $savedPaths[] = $posterTargetPath;
+                $posterStream = fopen($item['poster_path'], 'rb');
+                if ($posterStream === false) {
+                    throw new Exception('Unable to read a generated video preview.');
+                }
+                try {
+                    $posterStored = Storage::disk($diskName)->put($posterTargetPath, $posterStream);
+                } finally {
+                    fclose($posterStream);
+                }
+                if (!$posterStored) {
+                    throw new Exception('Unable to store the preview image for ' . $item['upload']['name'] . '.');
+                }
+                $item['poster_filename'] = $posterFilename;
                 $preparedBatch[] = $item;
             }
             $batch = $preparedBatch;
@@ -460,8 +520,8 @@ class VideoController extends Controller
                         'cast_id' => '',
                         'name' => trim($request->input('title')),
                         'storage_type' => $storageType,
-                        'thumbnail' => '',
-                        'landscape' => '',
+                        'thumbnail' => $item['poster_filename'],
+                        'landscape' => $item['poster_filename'],
                         'description' => '',
                         'video_storage_type' => $storageType,
                         'video_upload_type' => 'server_video',
