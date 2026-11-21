@@ -26,7 +26,9 @@ class InstallController extends Controller
     public function step0(Request $request)
     {
         $url = $request->url();
-        if (strpos($request->url(), '/public') === false) {
+        // Local Laravel servers already serve the app through its public front
+        // controller. Redirecting to /public there produces a 404.
+        if (!app()->environment('local') && strpos($request->url(), '/public') === false) {
             return redirect($url . '/public');
         }
 
