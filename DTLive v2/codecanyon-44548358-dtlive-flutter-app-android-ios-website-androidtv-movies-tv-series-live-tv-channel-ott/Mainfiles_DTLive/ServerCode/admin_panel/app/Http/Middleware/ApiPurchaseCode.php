@@ -13,6 +13,13 @@ class ApiPurchaseCode
     {
         try {
 
+            // Some self-hosted deployments do not have an active marketplace
+            // registration. Keep this opt-in so the public API can be used
+            // without stale purchase-code values on those installations.
+            if (filter_var(env('DTLIVE_ALLOW_UNVERIFIED_API', false), FILTER_VALIDATE_BOOLEAN)) {
+                return $next($request);
+            }
+
             Artisan::call('config:clear');
 
             $verflyDomain = Demo_Domain();
