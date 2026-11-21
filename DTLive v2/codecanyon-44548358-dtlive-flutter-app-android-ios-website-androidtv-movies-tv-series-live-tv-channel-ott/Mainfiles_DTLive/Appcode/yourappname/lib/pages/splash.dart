@@ -319,6 +319,23 @@ class _SplashState extends State<Splash> with TickerProviderStateMixin {
 
   // ── Sequence — all via Future.delayed, zero setState ─────────────────
   void _startSequence() {
+    if (kIsWeb) {
+      _bgCtrl.forward();
+      _iconCtrl.forward();
+      _dotsCtrl.repeat();
+      _waveCtrl.repeat();
+      _stripCtrl.repeat();
+      _at(180, _sepCtrl.forward);
+      _at(350, _tagCtrl.forward);
+      _at(550, _subCtrl.forward);
+      _at(700, _lateCtrl.forward);
+      _at(1200, () {
+        _animDone = true;
+        _tryNavigate();
+      });
+      return;
+    }
+
     // 0 ms — BG + blobs
     _bgCtrl.forward();
     _orbitCtrl.repeat();
@@ -373,9 +390,28 @@ class _SplashState extends State<Splash> with TickerProviderStateMixin {
 
   // ── Data ──────────────────────────────────────────────────────────────
   Future<void> _fetchData() async {
+    if (kIsWeb) {
+      _nextPage = const WebHome(
+        newPage: RoutesConstant.homePage,
+        oldPage: RoutesConstant.homePage,
+        reqText: '',
+      );
+      _dataDone = true;
+      _tryNavigate();
+      return;
+    }
+
     if (_conn.isOnline) await _gen.getGeneralsetting(context);
     if (!mounted) return;
-    _resolveNextPage();
+    try {
+      await _resolveNextPage();
+    } on Exception catch (e) {
+      printLog('Splash route setup failed: $e');
+      if (!mounted) return;
+      _nextPage = const Bottombar();
+      _dataDone = true;
+      _tryNavigate();
+    }
   }
 
   Future<void> _resolveNextPage() async {
@@ -413,7 +449,7 @@ class _SplashState extends State<Splash> with TickerProviderStateMixin {
       context,
       PageRouteBuilder(
         pageBuilder: (_, _, _) => _nextPage!,
-        transitionDuration: const Duration(milliseconds: _kNavFadeMs),
+        transitionDuration: Duration(milliseconds: kIsWeb ? 180 : _kNavFadeMs),
         transitionsBuilder: (_, a, _, child) => FadeTransition(
           opacity: CurvedAnimation(parent: a, curve: Curves.easeOut),
           child: child,

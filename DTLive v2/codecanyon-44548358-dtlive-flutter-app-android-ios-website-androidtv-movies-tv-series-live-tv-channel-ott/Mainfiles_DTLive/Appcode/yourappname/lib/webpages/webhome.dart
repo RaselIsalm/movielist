@@ -105,6 +105,7 @@ class WebHomeState extends State<WebHome> {
     printLog('Constant userID =====> ${Constant.userID}');
     printLog('Constant userIsKid ==> ${Constant.userIsKid}');
 
+    unawaited(generalProvider.getGeneralsetting(context));
     await homeProvider.setLoading(true);
     await homeProvider.getSectionType();
 
@@ -130,7 +131,6 @@ class WebHomeState extends State<WebHome> {
       setState(() {});
     });
     if (!mounted) return;
-    generalProvider.getGeneralsetting(context);
   }
 
   Future<void> setSelectedTab(int tabPos) async {
@@ -340,7 +340,9 @@ class WebHomeState extends State<WebHome> {
           return const SizedBox.shrink();
         }
       } else {
-        return const SizedBox.shrink();
+        return const Center(
+          child: NoData(title: 'no_data', subTitle: 'no_video_show'),
+        );
       }
     }
   }

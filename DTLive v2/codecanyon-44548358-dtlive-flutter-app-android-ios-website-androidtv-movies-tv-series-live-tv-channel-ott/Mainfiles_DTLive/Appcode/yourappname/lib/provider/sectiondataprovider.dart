@@ -26,10 +26,15 @@ class SectionDataProvider extends ChangeNotifier {
     printLog("getSectionBanner isHomePage :==> $isHomePage");
     loadingBanner = true;
     sectionBannerModel = SectionBannerModel();
-    sectionBannerModel = await ApiService().sectionBanner(typeId, isHomePage);
-    printLog("getSectionBanner message :==> ${sectionBannerModel.message}");
-    loadingBanner = false;
-    notifyListeners();
+    try {
+      sectionBannerModel = await ApiService().sectionBanner(typeId, isHomePage);
+      printLog("getSectionBanner message :==> ${sectionBannerModel.message}");
+    } on Exception catch (e) {
+      printLog("getSectionBanner Exception :==> $e");
+    } finally {
+      loadingBanner = false;
+      notifyListeners();
+    }
   }
 
   Future<void> clearOldData() async {
@@ -72,8 +77,16 @@ class SectionDataProvider extends ChangeNotifier {
     loadingSection = true;
     printLog("getSectionList length :======> ${sectionList?.length}");
     sectionListModel = section.SectionListModel();
-    sectionListModel =
-        await ApiService().sectionList(typeId, isHomePage, pageNo);
+    try {
+      sectionListModel =
+          await ApiService().sectionList(typeId, isHomePage, pageNo);
+    } on Exception catch (e) {
+      printLog("getSectionList Exception :==> $e");
+      setLoadMore(false);
+      loadingSection = false;
+      notifyListeners();
+      return;
+    }
     printLog("getSectionList message :==> ${sectionListModel.message}");
     printLog(
         "sectionListModel length :=1=> ${(sectionListModel.result?.length ?? 0)}");
