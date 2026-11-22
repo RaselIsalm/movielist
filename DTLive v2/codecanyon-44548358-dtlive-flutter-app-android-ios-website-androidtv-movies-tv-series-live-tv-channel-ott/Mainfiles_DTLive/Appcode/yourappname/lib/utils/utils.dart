@@ -1487,17 +1487,17 @@ class Utils {
     required String video1080,
   }) {
     Map<String, String> qualityUrlList = <String, String>{};
-    if (video320 != "") {
-      qualityUrlList['320p'] = video320;
-    }
-    if (video480 != "") {
-      qualityUrlList['480p'] = video480;
+    if (video1080 != "") {
+      qualityUrlList['1080p'] = video1080;
     }
     if (video720 != "") {
       qualityUrlList['720p'] = video720;
     }
-    if (video1080 != "") {
-      qualityUrlList['1080p'] = video1080;
+    if (video480 != "") {
+      qualityUrlList['480p'] = video480;
+    }
+    if (video320 != "") {
+      qualityUrlList['320p'] = video320;
     }
     printLog("qualityUrlList ==========> ${qualityUrlList.length}");
     Constant.resolutionsUrls.clear();

@@ -71,7 +71,9 @@ class HomeController extends Controller
     public function __construct()
     {
         $this->common = new Common();
-        $this->page_limit = env('PAGE_LIMIT');
+        // A missing PAGE_LIMIT must never make public API pagination divide by
+        // zero.  This happens easily on a fresh production .env file.
+        $this->page_limit = max(1, (int) env('PAGE_LIMIT', 20));
     }
 
     public function general_setting()
@@ -1297,6 +1299,31 @@ class HomeController extends Controller
                             $data[$i]['data'] = $query;
                         } else {
                             $query = $this->common->home_section_query($user_id, $user_parent_control_status, $data[$i]['section_type'], $data[$i]['video_type'], $data[$i]['sub_video_type'], $data[$i]['type_id'], $data[$i]['content_ids'], $data[$i]['category_id'], $data[$i]['language_id'], $data[$i]['channel_id'], $data[$i]['order_by_upload'], $data[$i]['order_by_view'], $data[$i]['premium_video'], $data[$i]['no_of_content']);
+                            // Manually curated sections can point at deleted or
+                            // inactive IDs forever. Keep the section visible by
+                            // falling back to the newest active items when all
+                            // of its saved IDs have gone stale.
+                            if ($data[$i]['section_type'] == 1
+                                && in_array((int) $data[$i]['video_type'], [1, 2, 5, 6, 7], true)
+                                && $query instanceof \Illuminate\Support\Collection
+                                && $query->isEmpty()) {
+                                $query = $this->common->home_section_query(
+                                    $user_id,
+                                    $user_parent_control_status,
+                                    0,
+                                    $data[$i]['video_type'],
+                                    $data[$i]['sub_video_type'],
+                                    $data[$i]['type_id'],
+                                    '',
+                                    0,
+                                    0,
+                                    0,
+                                    2,
+                                    0,
+                                    -1,
+                                    $data[$i]['no_of_content']
+                                );
+                            }
                             $data[$i]['data'] = $query;
                         }
                     } else if ($data[$i]['video_type'] == 3) {

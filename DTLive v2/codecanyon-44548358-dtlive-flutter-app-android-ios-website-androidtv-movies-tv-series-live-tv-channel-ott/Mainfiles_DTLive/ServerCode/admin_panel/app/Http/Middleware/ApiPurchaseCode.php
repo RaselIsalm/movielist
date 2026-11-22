@@ -5,7 +5,6 @@ namespace App\Http\Middleware;
 use Closure;
 use Illuminate\Http\Request;
 use Exception;
-use Illuminate\Support\Facades\Artisan;
 
 class ApiPurchaseCode
 {
@@ -16,11 +15,9 @@ class ApiPurchaseCode
             // Some self-hosted deployments do not have an active marketplace
             // registration. Keep this opt-in so the public API can be used
             // without stale purchase-code values on those installations.
-            if (filter_var(env('DTLIVE_ALLOW_UNVERIFIED_API', false), FILTER_VALIDATE_BOOLEAN)) {
+            if (filter_var(config('installation.allow_unverified_api', false), FILTER_VALIDATE_BOOLEAN)) {
                 return $next($request);
             }
-
-            Artisan::call('config:clear');
 
             $verflyDomain = Demo_Domain();
             if ($verflyDomain == 1) {
@@ -28,9 +25,9 @@ class ApiPurchaseCode
                 return $next($request);
             } else {
 
-                $pc = env(base64_decode('UFVSQ0hBU0VfQ09ERQ=='));
-                $un = env(base64_decode('QlVZRVJfVVNFUk5BTUU='));
-                $status = env(base64_decode('UFVSQ0hBU0VfU1RBVFVT'));
+                $pc = config('installation.purchase_code');
+                $un = config('installation.buyer_username');
+                $status = config('installation.purchase_status');
 
                 if (!empty($pc) && !empty($un) && $status == 1) {
                     return $next($request);

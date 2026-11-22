@@ -19,7 +19,9 @@ class ApiAuthToken
             ], 401);
         }
 
-        if (!hash_equals(env('API_TOKEN'), $token)) {
+        $configuredToken = (string) config('installation.api_token', '');
+
+        if ($configuredToken === '' || !hash_equals($configuredToken, $token)) {
             return response()->json([
                 'status' => 401,
                 'errors' => __('api_msg.invalid_token')

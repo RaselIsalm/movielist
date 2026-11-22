@@ -24,7 +24,8 @@ class UserController extends Controller
     public function __construct()
     {
         $this->common = new Common();
-        $this->page_limit = env('PAGE_LIMIT');
+        // Keep API pagination usable when PAGE_LIMIT is absent from .env.
+        $this->page_limit = max(1, (int) env('PAGE_LIMIT', 20));
     }
 
     public function register(Request $request)

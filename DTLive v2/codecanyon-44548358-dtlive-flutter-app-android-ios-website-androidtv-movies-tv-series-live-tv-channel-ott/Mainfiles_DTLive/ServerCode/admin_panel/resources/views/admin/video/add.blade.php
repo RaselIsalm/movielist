@@ -35,7 +35,7 @@
                     <div class="card-body d-flex flex-wrap align-items-center justify-content-between">
                         <div>
                             <strong>Upload multiple movies</strong>
-                            <div class="text-muted">Choose many MP4 files, set shared details once, and save them together.</div>
+                            <div class="text-muted">Choose multiple MP4 files, set shared details once, and upload them one at a time. The server creates previews when a browser cannot decode a file.</div>
                         </div>
                         <div class="mt-2 mt-md-0">
                             <button type="button" class="btn btn-default" id="show_bulk_video_mode">Bulk upload</button>
@@ -686,7 +686,7 @@
     <script src="{{ asset('/assets/js/plupload.full.min.js')}}"></script>
     <script src="{{ asset('/assets/js/common.js')}}"></script>
     @if($type['type'] == 1)
-        <script src="{{ asset('/assets/js/bulk-video-upload.js') }}"></script>
+        <script src="{{ asset('/assets/js/bulk-video-upload.js') }}?v={{ filemtime(public_path('assets/js/bulk-video-upload.js')) }}"></script>
     @endif
 
     <script>

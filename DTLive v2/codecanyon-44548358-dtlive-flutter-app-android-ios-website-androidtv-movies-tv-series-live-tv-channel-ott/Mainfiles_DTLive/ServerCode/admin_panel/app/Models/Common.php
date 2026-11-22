@@ -6,11 +6,21 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Config;
+use App\Services\VideoTranscoder;
 use Exception;
 
 class Common extends Model
 {
     public $folder_content = "content";
+
+    /**
+     * Generate missing local quality variants after a server video upload.
+     * Cloud URLs and explicitly supplied quality files are preserved as-is.
+     */
+    public function prepareVideoVariants(array $variants, int $storage_type = 1): array
+    {
+        return app(VideoTranscoder::class)->prepareVariants($variants, $storage_type);
+    }
 
     // Image Functions
     public function saveImage($org_name, $folder, $prefix = "", $storage_type = 1)

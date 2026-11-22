@@ -1,6 +1,12 @@
 <IfModule mod_rewrite.c>
     RewriteEngine On
 
+    # Laravel owns the API and admin panel. Keep these paths out of the
+    # Flutter history fallback so API calls receive JSON and admin sessions
+    # reach the Laravel front controller.
+    RewriteRule ^api(?:/|$) index.php [L]
+    RewriteRule ^admin(?:/|$) index.php [L]
+
     # Serve existing files and folders directly (like JS, CSS, assets)
     RewriteCond %{REQUEST_FILENAME} -f [OR]
     RewriteCond %{REQUEST_FILENAME} -d

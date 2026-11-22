@@ -687,6 +687,17 @@ class TVShowController extends Controller
                     $insert['video_1080'] = $video_1080 != null ? $this->common->saveImage($video_1080, $this->folder_content, 'show_ep_', $insert['video_storage_type']) : "";
                 }
 
+                $qualityVariants = $this->common->prepareVideoVariants([
+                    'video_320' => $insert['video_320'],
+                    'video_480' => $insert['video_480'],
+                    'video_720' => $insert['video_720'],
+                    'video_1080' => $insert['video_1080'],
+                ], (int) $insert['video_storage_type']);
+                $insert['video_320'] = $qualityVariants['video_320'];
+                $insert['video_480'] = $qualityVariants['video_480'];
+                $insert['video_720'] = $qualityVariants['video_720'];
+                $insert['video_1080'] = $qualityVariants['video_1080'];
+
                 $array = explode('.',  $insert['video_320']);
                 $insert['video_extension'] = end($array);
             } else {
@@ -943,6 +954,16 @@ class TVShowController extends Controller
                     $TVShowVideo['video_720'] = $request['video_url_720'] ?? '';
                     $TVShowVideo['video_1080'] = $request['video_url_1080'] ?? '';
                 }
+                $qualityVariants = $this->common->prepareVideoVariants([
+                    'video_320' => $TVShowVideo['video_320'],
+                    'video_480' => $TVShowVideo['video_480'],
+                    'video_720' => $TVShowVideo['video_720'],
+                    'video_1080' => $TVShowVideo['video_1080'],
+                ], (int) ($TVShowVideo['video_storage_type'] ?? $storage_type));
+                $TVShowVideo['video_320'] = $qualityVariants['video_320'];
+                $TVShowVideo['video_480'] = $qualityVariants['video_480'];
+                $TVShowVideo['video_720'] = $qualityVariants['video_720'];
+                $TVShowVideo['video_1080'] = $qualityVariants['video_1080'];
                 $TVShowVideo['video_duration'] = isset($request->video_duration) ? Time_To_Milliseconds($request->video_duration) : 0;
 
                 // Subtitle

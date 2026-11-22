@@ -596,9 +596,8 @@ class VideoController extends Controller
             if (!$upload || !$upload['complete'] || !is_file($videoPath) || filesize($videoPath) !== $upload['size']) {
                 return response()->json(['status' => 400, 'errors' => ['Every selected video must finish uploading before the batch can be saved.']], 422);
             }
-            if (empty($upload['poster_complete']) || !is_file($posterPath)) {
-                return response()->json(['status' => 400, 'errors' => ['A preview image must be generated for every video before saving.']], 422);
-            }
+            // A client preview is optional. HEVC/large videos often cannot be
+            // decoded in the browser; ffmpeg generates the thumbnail below.
             $batch[] = ['id' => $uploadId, 'upload' => $upload, 'path' => $videoPath, 'poster_path' => $posterPath];
         }
 
@@ -630,9 +629,32 @@ class VideoController extends Controller
                 $item['filename'] = $filename;
                 $item['target_path'] = $targetPath;
 
+                $qualityVariants = $this->common->prepareVideoVariants([
+                    'video_320' => $filename,
+                    'video_480' => '',
+                    'video_720' => '',
+                    'video_1080' => '',
+                ], $storageType);
+                $item['filename'] = $qualityVariants['video_320'];
+                $item['video_480'] = $qualityVariants['video_480'];
+                $item['video_720'] = $qualityVariants['video_720'];
+                $item['video_1080'] = $qualityVariants['video_1080'];
+                foreach ([$item['filename'], $item['video_480'], $item['video_720'], $item['video_1080']] as $variant) {
+                    if ($variant !== '' && $variant !== $filename) {
+                        $savedPaths[] = $this->folder_content . '/' . $variant;
+                    }
+                }
+
                 $posterFilename = 'vid_' . date('Y_m_d_') . Str::uuid() . '.jpg';
                 $posterTargetPath = $this->folder_content . '/' . $posterFilename;
                 $savedPaths[] = $posterTargetPath;
+                if (!is_file($item['poster_path'])) {
+                    app(\App\Services\VideoTranscoder::class)->createPoster(
+                        $item['path'],
+                        $this->bulkUploadDirectory($item['id']) . DIRECTORY_SEPARATOR . $item['id'] . '.poster.jpg'
+                    );
+                    $item['poster_path'] = $this->bulkUploadDirectory($item['id']) . DIRECTORY_SEPARATOR . $item['id'] . '.poster.jpg';
+                }
                 $posterStream = fopen($item['poster_path'], 'rb');
                 if ($posterStream === false) {
                     throw new Exception('Unable to read a generated video preview.');
@@ -669,9 +691,9 @@ class VideoController extends Controller
                         'video_storage_type' => $storageType,
                         'video_upload_type' => 'server_video',
                         'video_320' => $item['filename'],
-                        'video_480' => '',
-                        'video_720' => '',
-                        'video_1080' => '',
+                        'video_480' => $item['video_480'] ?? '',
+                        'video_720' => $item['video_720'] ?? '',
+                        'video_1080' => $item['video_1080'] ?? '',
                         'video_extension' => 'mp4',
                         'video_duration' => 0,
                         'trailer_storage_type' => $storageType,
@@ -860,6 +882,17 @@ class VideoController extends Controller
                     $insert['video_720'] = $video_720 != null ? $this->common->saveImage($video_720, $this->folder_content, 'vid_', $storage_type) : "";
                     $insert['video_1080'] = $video_1080 != null ? $this->common->saveImage($video_1080, $this->folder_content, 'vid_', $storage_type) : "";
                 }
+
+                $qualityVariants = $this->common->prepareVideoVariants([
+                    'video_320' => $insert['video_320'],
+                    'video_480' => $insert['video_480'],
+                    'video_720' => $insert['video_720'],
+                    'video_1080' => $insert['video_1080'],
+                ], (int) $insert['video_storage_type']);
+                $insert['video_320'] = $qualityVariants['video_320'];
+                $insert['video_480'] = $qualityVariants['video_480'];
+                $insert['video_720'] = $qualityVariants['video_720'];
+                $insert['video_1080'] = $qualityVariants['video_1080'];
 
                 $array = explode('.', $insert['video_320']);
                 $insert['video_extension'] = end($array);
@@ -1205,6 +1238,16 @@ class VideoController extends Controller
                     $video['video_720'] = $request['video_url_720'] ?? '';
                     $video['video_1080'] = $request['video_url_1080'] ?? '';
                 }
+                $qualityVariants = $this->common->prepareVideoVariants([
+                    'video_320' => $video['video_320'],
+                    'video_480' => $video['video_480'],
+                    'video_720' => $video['video_720'],
+                    'video_1080' => $video['video_1080'],
+                ], (int) ($video['video_storage_type'] ?? $storage_type));
+                $video['video_320'] = $qualityVariants['video_320'];
+                $video['video_480'] = $qualityVariants['video_480'];
+                $video['video_720'] = $qualityVariants['video_720'];
+                $video['video_1080'] = $qualityVariants['video_1080'];
                 $video['video_duration'] = isset($request['video_duration']) ? Time_To_Milliseconds($request['video_duration']) : 0;
 
                 // Subtitle

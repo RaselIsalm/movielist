@@ -20,10 +20,11 @@
     let uploading = false;
     let saving = false;
 
-    function request(url, data, onProgress) {
+    function request(url, data, onProgress, timeout) {
         return new Promise(function (resolve, reject) {
             const xhr = new XMLHttpRequest();
             xhr.open('POST', url, true);
+            xhr.timeout = typeof timeout === 'number' ? timeout : 120000;
             xhr.setRequestHeader('X-CSRF-TOKEN', config.csrf);
             xhr.setRequestHeader('Accept', 'application/json');
             if (onProgress) xhr.upload.onprogress = onProgress;
@@ -44,8 +45,24 @@
             };
             xhr.onerror = function () { reject(new Error('Network error. Check your connection and retry this file.')); };
             xhr.onabort = function () { reject(new Error('Upload was cancelled.')); };
+            xhr.ontimeout = function () { reject(new Error('The upload request timed out. Retry this file; completed chunks are checked safely.')); };
             xhr.send(data);
         });
+    }
+
+    async function requestChunk(url, data, onProgress) {
+        let lastError;
+        for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+                return await request(url, data, onProgress);
+            } catch (error) {
+                lastError = error;
+                if (attempt < 2) {
+                    await new Promise(function (resolve) { window.setTimeout(resolve, 500 * (attempt + 1)); });
+                }
+            }
+        }
+        throw lastError;
     }
 
     function formatSize(bytes) {
@@ -200,12 +217,17 @@
         item.error = '';
         renderQueue();
 
-        if (!item.poster) {
-            item.label = 'Creating preview';
-            renderQueue();
-            item.poster = await createPoster(item.file);
-            item.posterUrl = URL.createObjectURL(item.poster);
-            renderQueue();
+        // Browser decoders reject some valid MP4 codecs (notably HEVC), and
+        // seeking through a large file can take a long time. Create a preview
+        // in parallel, but never make the actual upload depend on the browser
+        // being able to decode it. The server can create a JPEG with ffmpeg.
+        if (!item.posterPromise) {
+            item.posterPromise = createPoster(item.file).then(function (poster) {
+                item.poster = poster;
+                item.posterUrl = URL.createObjectURL(poster);
+                renderQueue();
+                return poster;
+            }).catch(function () { return null; });
         }
 
         if (item.uploadId) {
@@ -232,7 +254,7 @@
             body.append('chunk_index', index);
             body.append('chunk_count', count);
             body.append('chunk', item.file.slice(start, end), item.file.name);
-            await request(config.chunkUrl, body, function (event) {
+            await requestChunk(config.chunkUrl, body, function (event) {
                 if (event.lengthComputable) {
                     item.progress = Math.floor(((start + event.loaded) / item.file.size) * 100);
                     renderQueue();
@@ -242,15 +264,21 @@
             renderQueue();
         }
 
-        item.label = 'Saving preview';
+        item.label = 'Finishing upload';
         renderQueue();
-        const posterData = new FormData();
-        posterData.append('upload_id', item.uploadId);
-        posterData.append('thumbnail', item.poster, item.file.name.replace(/\.[^/.]+$/, '') + '.jpg');
-        await request(config.thumbnailUrl, posterData);
+        const poster = await Promise.race([
+            item.posterPromise,
+            new Promise(function (resolve) { window.setTimeout(function () { resolve(null); }, 750); })
+        ]);
+        if (poster) {
+            const posterData = new FormData();
+            posterData.append('upload_id', item.uploadId);
+            posterData.append('thumbnail', poster, item.file.name.replace(/\.[^/.]+$/, '') + '.jpg');
+            await request(config.thumbnailUrl, posterData);
+        }
 
         item.status = 'uploaded';
-        item.label = 'Ready to save';
+        item.label = poster ? 'Ready to save' : 'Uploaded · server will create preview';
         item.progress = 100;
         renderQueue();
     }
@@ -316,7 +344,10 @@
         $('#dvloader').show();
 
         try {
-            const response = await request(config.saveUrl, body);
+            // A batch may need several minutes while the server creates
+            // browser-compatible variants for large videos. Let PHP finish
+            // and return the committed result instead of aborting at 120s.
+            const response = await request(config.saveUrl, body, null, 0);
             $('#dvloader').hide();
             toastr.success(response.success || 'Videos saved successfully.');
             window.setTimeout(function () { window.location.replace(config.indexUrl); }, 500);
