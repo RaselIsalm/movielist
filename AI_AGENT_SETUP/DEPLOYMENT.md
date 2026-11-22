@@ -79,6 +79,10 @@ Set `DTLIVE_R2_ONLY=true` in production to force all new image, video,
 subtitle, and artwork writes to R2. The local disk is used only for temporary
 bulk-upload staging and framework state. After a verified migration, local
 media can be removed with `php artisan media:migrate-r2 --delete-local`.
+Bulk uploads also detect the admin storage setting and use direct R2 multipart
+uploads whenever storage type 2 is selected, even on older deployments that
+do not yet have `DTLIVE_R2_ONLY` in `.env`. If the local fallback is ever used,
+`DTLIVE_UPLOAD_MIN_FREE_BYTES` reserves disk space before accepting a file.
 
 The media queue watchdog also runs `media:cleanup-staging` periodically. It
 removes abandoned staging files while preserving active queued/processing

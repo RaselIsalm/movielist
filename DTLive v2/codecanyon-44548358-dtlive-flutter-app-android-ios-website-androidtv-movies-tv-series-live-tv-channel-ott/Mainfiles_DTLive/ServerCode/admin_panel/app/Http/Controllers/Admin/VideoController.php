@@ -343,6 +343,20 @@ class VideoController extends Controller
 
         $this->cleanupExpiredBulkUploads();
 
+        // If direct R2 is unavailable, the fallback assembler needs roughly
+        // two local copies (chunks plus the assembled MP4). Refuse the upload
+        // before it can fill the VPS filesystem.
+        if (!$this->directR2UploadsEnabled()) {
+            $freeBytes = @disk_free_space(storage_path('app'));
+            $requiredBytes = (int) $request->input('file_size') * 2 + $this->minimumUploadFreeSpace();
+            if ($freeBytes !== false && $freeBytes < $requiredBytes) {
+                return response()->json([
+                    'status' => 507,
+                    'errors' => ['Not enough temporary disk space for this upload. Configure direct R2 uploads or free VPS storage first.'],
+                ], 507);
+            }
+        }
+
         $uploadId = (string) Str::uuid();
         $upload = [
             'name' => basename($name),
@@ -963,7 +977,24 @@ class VideoController extends Controller
 
     private function directR2UploadsEnabled(): bool
     {
-        return filter_var(config('filesystems.r2_only', false), FILTER_VALIDATE_BOOLEAN);
+        $disk = config('filesystems.disks.s3', []);
+        $configured = trim((string) ($disk['key'] ?? '')) !== ''
+            && trim((string) ($disk['secret'] ?? '')) !== ''
+            && trim((string) ($disk['bucket'] ?? '')) !== ''
+            && trim((string) ($disk['endpoint'] ?? '')) !== '';
+        if (!$configured) {
+            return false;
+        }
+
+        // Admin storage settings may already select R2 even when the newer
+        // DTLIVE_R2_ONLY env flag has not been added to an older deployment.
+        return filter_var(config('filesystems.r2_only', false), FILTER_VALIDATE_BOOLEAN)
+            || (int) Storage_Type() === 2;
+    }
+
+    private function minimumUploadFreeSpace(): int
+    {
+        return max(256 * 1024 * 1024, (int) env('DTLIVE_UPLOAD_MIN_FREE_BYTES', 1024 * 1024 * 1024));
     }
 
     private function directR2UploadState(array $upload): ?array
