@@ -38,6 +38,7 @@ import '../utils/utils.dart';
 import '../widget/mynetworkimg.dart';
 import '../widget/ratingreview.dart';
 import '../ads/adsterra_ad.dart';
+import '../ads/adsterra_preplay.dart';
 
 class WebContentVideoDetails extends StatefulWidget {
   final String? newPage, oldPage;
@@ -407,6 +408,9 @@ class WebContentVideoDetailsState extends State<WebContentVideoDetails>
       if (!isPrimiumUser) return;
     }
     /* CHECK SUBSCRIPTION */
+    if (kIsWeb && playType != "Trailer") {
+      if (!await showAdsterraPreplayAd(context)) return;
+    }
     printLog(
       "ID :===> ${(videoDetailsProvider.contentDetailModel.result?[0].id ?? 0)}",
     );

@@ -1478,11 +1478,13 @@ class _PlayerVideoState extends State<PlayerVideo>
                         }
                       }
                     : _toggleControls, // mobile: tap = toggle controls
-                onVerticalDragEnd: _isScreenLocked ? null : _onVerticalDragEnd,
-                onVerticalDragCancel: _isScreenLocked
+                onVerticalDragEnd: _isScreenLocked || kIsWeb
+                    ? null
+                    : _onVerticalDragEnd,
+                onVerticalDragCancel: _isScreenLocked || kIsWeb
                     ? null
                     : _onVerticalDragCancel,
-                onVerticalDragUpdate: _isScreenLocked
+                onVerticalDragUpdate: _isScreenLocked || kIsWeb
                     ? null
                     : (details) => _onVerticalDragUpdate(
                         details,
@@ -1543,7 +1545,15 @@ class _PlayerVideoState extends State<PlayerVideo>
                       ? LayoutBuilder(
                           builder: (context, constraints) {
                             if (constraints.maxWidth >= 700) {
-                              return _buildPlayerSurface();
+                              return Column(
+                                children: [
+                                  Expanded(child: _buildPlayerSurface()),
+                                  const AdsterraAd(
+                                    unit: AdsterraUnit.banner300x250,
+                                    margin: EdgeInsets.only(top: 12, bottom: 16),
+                                  ),
+                                ],
+                              );
                             }
                             return SingleChildScrollView(
                               child: Column(

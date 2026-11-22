@@ -38,6 +38,7 @@ import '../widget/mynetworkimg.dart';
 import '../widget/ratingreview.dart';
 import '../widget/relatedvideoshow.dart';
 import '../ads/adsterra_ad.dart';
+import '../ads/adsterra_preplay.dart';
 
 class WebContentShowDetails extends StatefulWidget {
   final String? newPage, oldPage;
@@ -451,6 +452,10 @@ class WebContentShowDetailsState extends State<WebContentShowDetails>
         if (!isPrimiumUser) return;
       }
       /* CHECK SUBSCRIPTION */
+
+      if (kIsWeb && playType != "Trailer") {
+        if (!await showAdsterraPreplayAd(context)) return;
+      }
 
       int? epiID =
           (episodeProvider

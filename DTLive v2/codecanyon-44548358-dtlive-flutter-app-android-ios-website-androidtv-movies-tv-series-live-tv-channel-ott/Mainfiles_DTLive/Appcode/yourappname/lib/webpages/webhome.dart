@@ -41,6 +41,7 @@ import '../widget/content_section_widget.dart';
 import '../widget/genre_language_section_widget.dart';
 import '../widget/shorts_section_widget.dart';
 import '../ads/adsterra_ad.dart';
+import '../ads/adsterra_preplay.dart';
 
 class WebHome extends StatefulWidget {
   final String? newPage, oldPage;
@@ -230,6 +231,10 @@ class WebHomeState extends State<WebHome> {
       if (!isPrimiumUser) return;
     }
     /* CHECK SUBSCRIPTION */
+
+    if (kIsWeb && playType != "Trailer") {
+      if (!await showAdsterraPreplayAd(context)) return;
+    }
 
     if (!mounted) return;
     /* Set-up Quality URLs */
