@@ -13,22 +13,135 @@
 
 use App\Http\Controllers\Api\HomeController;
 use App\Http\Controllers\Api\UserController;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
 
-// Serve public catalog files through the API middleware stack so Flutter Web
-// receives the same CORS headers as JSON requests on a separate local port.
-Route::get('media/{folder}/{filename}', function (string $folder, string $filename) {
+// Serve catalog files through the API middleware stack so Flutter Web receives
+// same-origin responses. Cloud disks are streamed with HTTP Range support;
+// this is required for private R2 buckets because their presigned responses
+// do not include browser CORS headers.
+Route::get('media/{folder}/{filename}', function (Request $request, string $folder, string $filename) {
     $publicFolders = ['app', 'avatar', 'cast', 'category', 'channel', 'content', 'language', 'notification', 'type', 'user'];
 
     abort_unless(in_array($folder, $publicFolders, true), 404);
     abort_unless(basename($filename) === $filename && $filename !== '.' && $filename !== '..', 404);
 
-    $path = Storage::disk('public')->path($folder . '/' . $filename);
-    abort_unless(is_file($path), 404);
+    $storageType = (int) $request->query('storage', 1);
+    $diskName = [1 => 'public', 2 => 's3', 3 => 'wasabi'][$storageType] ?? null;
+    abort_unless($diskName !== null, 404);
+    $path = $folder . '/' . $filename;
+    $disk = Storage::disk($diskName);
 
-    return response()->file($path, ['Cache-Control' => 'public, max-age=3600']);
-})->withoutMiddleware('throttle:api');
+    if ($diskName === 'public') {
+        $localPath = $disk->path($path);
+        abort_unless(is_file($localPath), 404);
+        return response()->file($localPath, [
+            'Cache-Control' => 'public, max-age=3600',
+            'Access-Control-Allow-Origin' => '*',
+        ]);
+    }
+
+    abort_unless($disk->exists($path), 404);
+    $size = (int) $disk->size($path);
+    abort_unless($size > 0, 404);
+
+    $start = 0;
+    $end = $size - 1;
+    $range = $request->header('Range');
+    if ($range !== null && preg_match('/bytes=(\d*)-(\d*)/i', $range, $matches)) {
+        if ($matches[1] === '' && $matches[2] === '') {
+            return response('', 416, ['Content-Range' => 'bytes */' . $size]);
+        }
+        if ($matches[1] === '') {
+            $suffixLength = min($size, (int) $matches[2]);
+            $start = $size - $suffixLength;
+        } else {
+            $start = (int) $matches[1];
+            $end = $matches[2] === '' ? $end : (int) $matches[2];
+        }
+        if ($start < 0 || $start >= $size || $end < $start) {
+            return response('', 416, ['Content-Range' => 'bytes */' . $size]);
+        }
+        $end = min($end, $size - 1);
+    }
+
+    $length = $end - $start + 1;
+    $contentType = match (strtolower(pathinfo($filename, PATHINFO_EXTENSION))) {
+        'mp4', 'm4v' => 'video/mp4',
+        'webm' => 'video/webm',
+        'jpg', 'jpeg' => 'image/jpeg',
+        'png' => 'image/png',
+        'webp' => 'image/webp',
+        default => 'application/octet-stream',
+    };
+
+    // Ask the S3-compatible client for exactly the requested range. This
+    // avoids downloading a whole movie when a browser seeks near the end.
+    $body = null;
+    $stream = null;
+    $adapter = $disk->getAdapter();
+    if (method_exists($adapter, 'getClient')) {
+        $client = $adapter->getClient();
+        $options = [
+            'Bucket' => $disk->getConfig()['bucket'],
+            'Key' => $path,
+        ];
+        if ($start !== 0 || $end !== $size - 1) {
+            $options['Range'] = 'bytes=' . $start . '-' . $end;
+        }
+        $object = $client->getObject($options);
+        $body = $object['Body'];
+        $contentType = $object['ContentType'] ?? $contentType;
+    }
+    if ($body === null) {
+        $stream = $disk->readStream($path);
+        abort_unless(is_resource($stream), 404);
+        if ($start > 0) {
+            fseek($stream, $start);
+        }
+    }
+
+    $headers = [
+        'Content-Type' => $contentType,
+        'Content-Length' => (string) $length,
+        'Accept-Ranges' => 'bytes',
+        'Cache-Control' => 'public, max-age=3600',
+        'Content-Disposition' => 'inline; filename="' . addslashes($filename) . '"',
+        'Access-Control-Allow-Origin' => '*',
+        'X-Content-Type-Options' => 'nosniff',
+    ];
+    $status = ($start !== 0 || $end !== $size - 1) ? 206 : 200;
+    if ($status === 206) {
+        $headers['Content-Range'] = 'bytes ' . $start . '-' . $end . '/' . $size;
+    }
+
+    return response()->stream(function () use ($body, $stream, $length) {
+        $remaining = $length;
+        if ($body !== null) {
+            while ($remaining > 0 && !$body->eof()) {
+                $chunk = $body->read(min(1024 * 1024, $remaining));
+                if ($chunk === '') {
+                    break;
+                }
+                echo $chunk;
+                $remaining -= strlen($chunk);
+                flush();
+            }
+            return;
+        }
+        while ($remaining > 0 && !feof($stream)) {
+            $chunk = fread($stream, min(1024 * 1024, $remaining));
+            if ($chunk === false || $chunk === '') {
+                break;
+            }
+            echo $chunk;
+            $remaining -= strlen($chunk);
+            flush();
+        }
+        fclose($stream);
+    }, $status, $headers);
+})->withoutMiddleware('throttle:api')->name('api.media');
 
 Route::group(['middleware' => 'apipurchasecode'], function () {
     Route::group(['middleware' => 'apiauthtoken'], function () {

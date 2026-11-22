@@ -234,18 +234,37 @@ class Common extends Model
             3 => 'wasabi',
             default => 'public',
         };
-        $disk = Storage::disk($diskName);
-        if (!$disk->exists($path)) {
-            return null;
-        }
-
         if ($diskName === 'public') {
+            $disk = Storage::disk($diskName);
+            if (!$disk->exists($path)) {
+                return null;
+            }
             return rtrim((string) Config::get('app.image_url'), '/') . '/' . $path;
         }
 
         $publicBase = $this->configuredPublicStorageUrl($diskName);
         if ($publicBase !== '') {
+            if (!Storage::disk($diskName)->exists($path)) {
+                return null;
+            }
             return rtrim($publicBase, '/') . '/' . $path;
+        }
+
+        // A private R2 bucket does not add browser CORS headers to its
+        // presigned responses. Route cloud media through our same-origin
+        // range endpoint unless a public/custom media domain was configured.
+        // The endpoint keeps the bucket private and supports browser seeking.
+        if (filter_var(env('DTLIVE_MEDIA_PROXY', true), FILTER_VALIDATE_BOOLEAN)) {
+            $base = rtrim((string) Config::get('app.image_url'), '/');
+            if ($base === '') {
+                $base = rtrim(url('/api/media'), '/');
+            }
+            return $base . '/' . $path . '?storage=' . $storageType;
+        }
+
+        $disk = Storage::disk($diskName);
+        if (!$disk->exists($path)) {
+            return null;
         }
 
         // R2 buckets are normally private. Use a short-lived signed URL so

@@ -16,6 +16,7 @@
         indexUrl: $section.data('index-url')
     };
     const chunkSize = 1024 * 1024;
+    const uploadConcurrency = 3;
     let queue = [];
     let uploading = false;
     let saving = false;
@@ -155,7 +156,7 @@
         const saved = queue.filter(function (item) { return item.saved; }).length;
         $('#bulk_video_empty').toggle(total === 0);
         $('#bulk_video_summary').text(total
-            ? (saving ? saved + ' of ' + total + ' saved · processing one video at a time' : completed + ' of ' + total + ' uploaded') + (failed ? ' · ' + failed + ' failed' : '')
+            ? (saving ? saved + ' of ' + total + ' saved · finalizing safely' : completed + ' of ' + total + ' uploaded') + (failed ? ' · ' + failed + ' failed' : '')
             : 'No files selected');
 
         queue.forEach(function (item) {
@@ -288,18 +289,25 @@
         if (uploading || saving) return;
         uploading = true;
         renderQueue();
-        while (true) {
-            const item = queue.find(function (candidate) { return candidate.status === 'queued'; });
-            if (!item) break;
-            try {
-                await uploadItem(item);
-            } catch (error) {
-                item.status = 'failed';
-                item.label = 'Upload failed';
-                item.error = error.message || 'Upload failed.';
-                renderQueue();
+        async function worker() {
+            while (true) {
+                const item = queue.find(function (candidate) { return candidate.status === 'queued'; });
+                if (!item) return;
+                try {
+                    await uploadItem(item);
+                } catch (error) {
+                    item.status = 'failed';
+                    item.label = 'Upload failed';
+                    item.error = error.message || 'Upload failed.';
+                    renderQueue();
+                }
             }
         }
+
+        const workers = [];
+        const workerCount = Math.min(uploadConcurrency, queue.length);
+        for (let index = 0; index < workerCount; index++) workers.push(worker());
+        await Promise.all(workers);
         uploading = false;
         renderQueue();
     }

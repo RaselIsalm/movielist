@@ -133,6 +133,17 @@ class AdminBulkVideoUploadTest extends TestCase
         $this->assertSame(3, Video::count());
     }
 
+    public function test_it_can_save_when_the_admin_session_is_rotated_after_upload(): void
+    {
+        $uploadId = $this->uploadMp4('rotated-session.mp4', $this->validMp4('session independent'));
+        session()->forget('bulk_video_uploads');
+
+        $this->postJson(route('admin.video.bulk.save'), $this->batchPayload([$uploadId]))
+            ->assertOk()
+            ->assertJson(['status' => 200, 'count' => 1]);
+        $this->assertSame(1, Video::count());
+    }
+
     public function test_it_uses_the_configured_s3_storage_disk(): void
     {
         Storage::fake('s3');

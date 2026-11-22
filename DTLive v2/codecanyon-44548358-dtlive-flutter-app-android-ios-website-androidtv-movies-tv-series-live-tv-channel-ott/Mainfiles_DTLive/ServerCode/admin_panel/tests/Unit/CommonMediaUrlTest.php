@@ -41,6 +41,18 @@ class CommonMediaUrlTest extends TestCase
         $this->assertSame($remote, $result[0]['video_320']);
     }
 
+    public function test_private_cloud_media_uses_the_same_origin_range_endpoint(): void
+    {
+        config(['app.image_url' => 'https://media.example.test/api/media/']);
+        Storage::fake('s3');
+        Storage::disk('s3')->put('content/video.mp4', 'video');
+
+        $this->assertSame(
+            'https://media.example.test/api/media/content/video.mp4?storage=2',
+            (new Common())->getVideo('content', 'video.mp4', 2)
+        );
+    }
+
     public function test_image_url_conversion_updates_each_response_item(): void
     {
         $result = (new Common())->imageNameToUrl([

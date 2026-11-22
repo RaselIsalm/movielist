@@ -360,6 +360,7 @@ class VideoController extends Controller
             session()->put('bulk_video_uploads', $uploads);
             return response()->json(['status' => 500, 'errors' => ['Unable to prepare temporary upload storage.']], 500);
         }
+        $this->persistBulkUpload($uploadId, $upload);
 
         return response()->json([
             'status' => 200,
@@ -383,7 +384,7 @@ class VideoController extends Controller
 
         $uploadId = $request->input('upload_id');
         $uploads = session()->get('bulk_video_uploads', []);
-        $upload = $uploads[$uploadId] ?? null;
+        $upload = $this->readBulkUpload($uploadId) ?? ($uploads[$uploadId] ?? null);
         if (!$upload) {
             return response()->json(['status' => 404, 'errors' => ['Upload session not found.']], 404);
         }
@@ -421,6 +422,7 @@ class VideoController extends Controller
         $upload['chunk_count'] = $chunkCount;
         $uploads[$uploadId] = $upload;
         session()->put('bulk_video_uploads', $uploads);
+        $this->persistBulkUpload($uploadId, $upload);
 
         $allChunksPresent = true;
         for ($index = 0; $index < $chunkCount; $index++) {
@@ -486,6 +488,7 @@ class VideoController extends Controller
             $upload['complete'] = true;
             $uploads[$uploadId] = $upload;
             session()->put('bulk_video_uploads', $uploads);
+            $this->persistBulkUpload($uploadId, $upload);
         }
 
         return response()->json([
@@ -514,7 +517,7 @@ class VideoController extends Controller
 
         $uploadId = $request->input('upload_id');
         $uploads = session()->get('bulk_video_uploads', []);
-        $upload = $uploads[$uploadId] ?? null;
+        $upload = $this->readBulkUpload($uploadId) ?? ($uploads[$uploadId] ?? null);
         if (!$upload || !$upload['complete']) {
             return response()->json(['status' => 404, 'errors' => ['Finish the video upload before sending its preview image.']], 404);
         }
@@ -530,6 +533,7 @@ class VideoController extends Controller
         $upload['poster_complete'] = true;
         $uploads[$uploadId] = $upload;
         session()->put('bulk_video_uploads', $uploads);
+        $this->persistBulkUpload($uploadId, $upload);
 
         return response()->json(['status' => 200]);
     }
@@ -591,7 +595,10 @@ class VideoController extends Controller
         $uploads = session()->get('bulk_video_uploads', []);
         $batch = [];
         foreach ($uploadIds as $uploadId) {
-            $upload = $uploads[$uploadId] ?? null;
+            // The session is only a convenience cache. Keep the authoritative
+            // receipt beside each staged file so a lost/rotated admin session
+            // cannot make an already uploaded movie disappear at save time.
+            $upload = $this->readBulkUpload($uploadId) ?? ($uploads[$uploadId] ?? null);
             $videoPath = $this->bulkUploadDirectory($uploadId) . DIRECTORY_SEPARATOR . $uploadId . '.mp4';
             $posterPath = $this->bulkUploadDirectory($uploadId) . DIRECTORY_SEPARATOR . $uploadId . '.poster.jpg';
             if (!$upload || !$upload['complete'] || !is_file($videoPath) || filesize($videoPath) !== $upload['size']) {
@@ -776,6 +783,42 @@ class VideoController extends Controller
     private function bulkUploadDirectory($uploadId)
     {
         return storage_path('app/bulk-video-staging/' . Auth::guard('admin')->id() . '/' . $uploadId);
+    }
+
+    private function bulkUploadMetadataPath($uploadId)
+    {
+        return $this->bulkUploadDirectory($uploadId) . DIRECTORY_SEPARATOR . 'meta.json';
+    }
+
+    /** Read staged upload state even when the browser's session cookie changed. */
+    private function readBulkUpload($uploadId)
+    {
+        $path = $this->bulkUploadMetadataPath($uploadId);
+        if (!is_file($path)) {
+            return null;
+        }
+
+        $decoded = json_decode((string) file_get_contents($path), true);
+        return is_array($decoded) ? $decoded : null;
+    }
+
+    /** Persist an upload receipt atomically beside its chunks. */
+    private function persistBulkUpload($uploadId, array $upload)
+    {
+        $directory = $this->bulkUploadDirectory($uploadId);
+        if (!is_dir($directory)) {
+            return;
+        }
+
+        $temporary = $this->bulkUploadMetadataPath($uploadId) . '.tmp';
+        $encoded = json_encode($upload, JSON_UNESCAPED_SLASHES);
+        if ($encoded === false || file_put_contents($temporary, $encoded, LOCK_EX) === false) {
+            throw new Exception('Unable to persist the staged upload receipt.');
+        }
+        if (!rename($temporary, $this->bulkUploadMetadataPath($uploadId))) {
+            @unlink($temporary);
+            throw new Exception('Unable to finalize the staged upload receipt.');
+        }
     }
 
     private function deleteBulkUploadDirectory($uploadId)

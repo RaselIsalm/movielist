@@ -686,7 +686,7 @@
     <script src="{{ asset('/assets/js/plupload.full.min.js')}}"></script>
     <script src="{{ asset('/assets/js/common.js')}}"></script>
     @if($type['type'] == 1)
-        <script src="{{ asset('/assets/js/bulk-video-upload-20261121.js?v=20261123') }}"></script>
+        <script src="{{ asset('/assets/js/bulk-video-upload-20261121.js?v=20261122-bulk4') }}"></script>
     @endif
 
     <script>

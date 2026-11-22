@@ -31,9 +31,11 @@ Use the admin storage settings with the R2 access key, secret, bucket name,
 endpoint, and region `auto`. The endpoint is the S3 API endpoint, for example
 `https://<account-id>.r2.cloudflarestorage.com`; it is not a public media URL.
 Keep the R2 bucket private and leave `DTLIVE_MEDIA_PUBLIC_URL` empty to return
-short-lived signed URLs. Set `DTLIVE_MEDIA_URL_TTL` to the desired lifetime in
-minutes (the default is 60). If a Cloudflare custom media domain is configured,
-set that value as `DTLIVE_MEDIA_PUBLIC_URL` instead.
+same-origin range-streamed media URLs. Set `DTLIVE_MEDIA_PROXY=false` only when
+the bucket/custom domain is configured with browser CORS headers and you want
+direct short-lived signed URLs instead. If a Cloudflare custom media domain is
+configured, set that value as `DTLIVE_MEDIA_PUBLIC_URL` and configure its CORS
+policy for the web app origin.
 
 After taking a database backup, audit and migrate existing local media with:
 
