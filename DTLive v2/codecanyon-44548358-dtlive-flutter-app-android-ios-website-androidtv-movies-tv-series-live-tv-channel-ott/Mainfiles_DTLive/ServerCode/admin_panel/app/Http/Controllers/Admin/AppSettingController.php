@@ -527,21 +527,25 @@ class AppSettingController extends Controller
                 $data['wasabi_endpoint'] = $request->wasabi_endpoint ??  "";
             }
 
-            if ($request['storage_type'] != 1 && !empty($request['id'])) {
-                // Only attempt to restore old Wasabi credentials if ID exists
-                $existingSettings = Storage_Setting::find($request['id']);
-                if ($existingSettings) {
+            // Preserve the other provider's settings, but never overwrite the
+            // values just submitted for the active provider. The old code
+            // copied every old value back over a new R2 configuration, making
+            // the admin form report success while the database stayed stale.
+            if (!empty($request['id'])) {
+                $existingSettings = Storage_Setting::query()
+                    ->whereIn('key', [
+                        's3_access_key', 's3_secret_key', 's3_bucket_name',
+                        's3_region', 's3_endpoint', 'wasabi_access_key',
+                        'wasabi_secret_key', 'wasabi_bucket_name',
+                        'wasabi_region', 'wasabi_endpoint',
+                    ])
+                    ->pluck('value', 'key')
+                    ->all();
 
-                    $data['wasabi_access_key'] = $existingSettings->wasabi_access_key ?? '';
-                    $data['wasabi_secret_key'] = $existingSettings->wasabi_secret_key ?? '';
-                    $data['wasabi_bucket_name'] = $existingSettings->wasabi_bucket_name ?? '';
-                    $data['wasabi_region'] = $existingSettings->wasabi_region ?? '';
-                    $data['wasabi_endpoint'] = $existingSettings->wasabi_endpoint ?? '';
-                    $data['s3_access_key'] = $existingSettings->s3_access_key ?? '';
-                    $data['s3_secret_key'] = $existingSettings->s3_secret_key ?? '';
-                    $data['s3_bucket_name'] = $existingSettings->s3_bucket_name ?? '';
-                    $data['s3_region'] = $existingSettings->s3_region ?? '';
-                    $data['s3_endpoint'] = $existingSettings->s3_endpoint ?? '';
+                foreach ($existingSettings as $key => $value) {
+                    if (!array_key_exists($key, $data)) {
+                        $data[$key] = $value;
+                    }
                 }
             }
 

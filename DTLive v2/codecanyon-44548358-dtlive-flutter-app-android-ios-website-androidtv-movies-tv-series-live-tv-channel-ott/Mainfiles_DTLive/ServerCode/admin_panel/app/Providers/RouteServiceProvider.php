@@ -49,9 +49,15 @@ class RouteServiceProvider extends ServiceProvider
             Route::middleware('web')
                 ->namespace($this->namespace)
                 ->group(base_path('routes/web.php'));
-            Route::middleware('web')
-                ->namespace($this->namespace)
-                ->group(base_path('routes/install.php'));
+            // The installer route file is optional in the production bundle.
+            // Do not make every request (or the test suite) fail when the
+            // installer has been removed after initial setup.
+            $installRoutes = base_path('routes/install.php');
+            if (is_file($installRoutes)) {
+                Route::middleware('web')
+                    ->namespace($this->namespace)
+                    ->group($installRoutes);
+            }
             Route::middleware('web')
                 ->prefix('producer')
                 ->namespace($this->namespace)

@@ -25,6 +25,27 @@ The Pages URL will normally be `https://sbayshop3171-ship-it.github.io/movielist
 
 For automatic Laravel deployment, add a `DEPLOY_HOOK_URL` Actions secret containing the deploy webhook from the hosting provider. `.github/workflows/server-deploy-hook.yml` will call it after every push to `main`. If the provider has no deploy hook, use its official SSH/deployment action instead.
 
+## Cloudflare R2 media delivery
+
+Use the admin storage settings with the R2 access key, secret, bucket name,
+endpoint, and region `auto`. The endpoint is the S3 API endpoint, for example
+`https://<account-id>.r2.cloudflarestorage.com`; it is not a public media URL.
+Keep the R2 bucket private and leave `DTLIVE_MEDIA_PUBLIC_URL` empty to return
+short-lived signed URLs. Set `DTLIVE_MEDIA_URL_TTL` to the desired lifetime in
+minutes (the default is 60). If a Cloudflare custom media domain is configured,
+set that value as `DTLIVE_MEDIA_PUBLIC_URL` instead.
+
+After taking a database backup, audit and migrate existing local media with:
+
+```bash
+php artisan media:migrate-r2 --dry-run
+php artisan media:migrate-r2
+```
+
+The command writes a JSON manifest, verifies object size and SHA-256 after each
+upload, updates a video's storage type only when its complete media group was
+verified, and keeps the local source files as a rollback copy.
+
 ## If the target is not GitHub Pages
 
 Keep the build job and replace only the `deploy-pages` step with the provider's official deployment action. Do not place provider tokens in the repository; store them as GitHub Actions Secrets and require a successful build before deployment.

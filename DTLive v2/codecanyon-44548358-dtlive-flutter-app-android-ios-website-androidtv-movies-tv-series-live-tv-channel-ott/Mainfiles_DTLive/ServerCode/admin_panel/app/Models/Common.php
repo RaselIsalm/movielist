@@ -6,8 +6,10 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\Log;
 use App\Services\VideoTranscoder;
 use Exception;
+use Throwable;
 
 class Common extends Model
 {
@@ -30,11 +32,17 @@ class Common extends Model
             $filename = $prefix . date('Y_m_d_') . uniqid() . '.' . $img_ext;
 
             if ($storage_type == 1) {
-                $org_name->move(base_path('storage/app/public/' . $folder), $filename);
+                if (!$org_name->storeAs($folder, $filename, 'public')) {
+                    throw new Exception('Unable to store the uploaded file.');
+                }
             } else if ($storage_type == 2) {
-                $org_name->storeAs($folder, $filename, 's3');
+                if (!$org_name->storeAs($folder, $filename, 's3')) {
+                    throw new Exception('Unable to store the uploaded file on S3-compatible storage.');
+                }
             } else if ($storage_type == 3) {
-                $org_name->storeAs($folder, $filename, 'wasabi');
+                if (!$org_name->storeAs($folder, $filename, 'wasabi')) {
+                    throw new Exception('Unable to store the uploaded file on Wasabi storage.');
+                }
             }
             return $filename;
         } catch (Exception $e) {
@@ -85,126 +93,63 @@ class Common extends Model
     public function getImage($folder = "", $name = "", $type = "", $storage_type = 1)
     {
         try {
-
-            if ($storage_type == 1) {
-
-                $appName = Config::get('app.image_url');
-
-                if ($folder && $name && Storage::disk('public')->exists($folder . '/' . $name)) {
-                    return $appName . $folder . '/' . $name;
-                }
-                return $this->byDefaultImg($type);
-            } else if ($storage_type == 2) {
-
-                if ($name != "" && $folder != "") {
-
-                    $storage = Storage_Setting();
-                    $appName = $storage['s3_endpoint'];
-                    $bucket_name = $storage['s3_bucket_name'];
-
-                    if (Storage::disk('s3')->exists($folder . '/' . $name)) {
-                        return 'https://' . $bucket_name . '.' . $appName . '/' . $folder . '/' . $name;
-                    }
-                }
-                return $this->byDefaultImg($type);
-            } else if ($storage_type == 3) {
-
-                if ($name != "" && $folder != "") {
-
-                    if (Storage::disk('wasabi')->exists($folder . '/' . $name)) {
-                        $storage = Storage_Setting();
-                        $appName = $storage['wasabi_endpoint'];
-                        $bucket_name = $storage['wasabi_bucket_name'];
-
-                        return $appName . '/' . $bucket_name . '/' . $folder . '/' . $name;
-                    }
-                }
-                return $this->byDefaultImg($type);
-            }
-        } catch (Exception $e) {
-            return response()->json(['status' => 400, 'errors' => $e->getMessage()]);
+            return $this->resolveMediaUrl($folder, $name, (int) $storage_type)
+                ?? $this->byDefaultImg($type);
+        } catch (Throwable $e) {
+            Log::warning('Unable to resolve image URL.', [
+                'folder' => $folder,
+                'name' => $name,
+                'storage_type' => $storage_type,
+                'error' => $e->getMessage(),
+            ]);
+            return $this->byDefaultImg($type);
         }
     }
+
+    /**
+     * Convert stored image names to URLs in-place. The old implementation
+     * changed only the foreach copy, so API responses kept returning names.
+     */
     public function imageNameToUrl($array, $column, $folder, $type = "")
     {
         try {
             foreach ($array as $key => $value) {
-
-                if ($value['storage_type'] == 1) {
-
-                    $appName = Config::get('app.image_url');
-
-                    if (!empty($value[$column]) && Storage::disk('public')->exists($folder . '/' . $value[$column])) {
-                        $value[$column] = $appName . $folder . '/' . $value[$column];
-                    } else {
-                        $value[$column] = $this->byDefaultImg($type);
-                    }
-                } else if ($value['storage_type'] == 2) {
-
-                    if (isset($value[$column]) && $value[$column] != "") {
-
-                        $storage = Storage_Setting();
-                        $appName = $storage['s3_endpoint'];
-                        $bucket_name = $storage['s3_bucket_name'];
-
-                        $url =   'https://' . $bucket_name . '.' . $appName . '/' . $folder . '/' . $value[$column];
-                        if (Storage::disk('s3')->exists($folder . '/' . $value[$column])) {
-                            $value[$column] = $url;
-                        } else {
-                            $value[$column] = $this->byDefaultImg($type);
-                        }
-                    } else {
-                        $value[$column] = $this->byDefaultImg($type);
-                    }
-                } else if ($value['storage_type'] == 3) {
-
-                    if (isset($value[$column]) && $value[$column] != "") {
-
-                        $storage = Storage_Setting();
-                        $appName = $storage['wasabi_endpoint'];
-                        $bucket_name = $storage['wasabi_bucket_name'];
-
-                        $url =   $appName . '/' . $bucket_name . '/' . $folder . '/' . $value[$column];
-                        if (Storage::disk('wasabi')->exists($folder . '/' . $value[$column])) {
-                            $value[$column] = $url;
-                        } else {
-                            $value[$column] = $this->byDefaultImg($type);
-                        }
-                    } else {
-                        $value[$column] = $this->byDefaultImg($type);
-                    }
-                }
+                $storageType = (int) ($value['storage_type'] ?? 1);
+                $value[$column] = $this->resolveMediaUrl($folder, $value[$column] ?? '', $storageType)
+                    ?? $this->byDefaultImg($type);
+                $array[$key] = $value;
             }
             return $array;
-        } catch (Exception $e) {
-            return response()->json(['status' => 400, 'errors' => $e->getMessage()]);
+        } catch (Throwable $e) {
+            Log::warning('Unable to resolve image URLs.', ['error' => $e->getMessage()]);
+            return $array;
         }
     }
     public function byDefaultImg($type = "") // profile, landscape, portrait, normal
     {
         $panel_data = Setting_Data();
-        $appName = Config::get('app.image_url');
+        $appName = rtrim((string) Config::get('app.image_url'), '/');
         $folder = "app";
 
         if ($type == "profile") {
 
-            $name = $panel_data['panel_profile_no_img'];
+            $name = $panel_data['panel_profile_no_img'] ?? '';
             if ($folder && $name && Storage::disk('public')->exists($folder . '/' . $name)) {
-                return $appName . $folder . '/' . $name;
+                return $appName . '/' . $folder . '/' . $name;
             }
             return asset('assets/imgs/profile.png');
         } else if ($type == "landscape") {
 
-            $name = $panel_data['panel_landscape_no_img'];
+            $name = $panel_data['panel_landscape_no_img'] ?? '';
             if ($folder && $name && Storage::disk('public')->exists($folder . '/' . $name)) {
-                return $appName . $folder . '/' . $name;
+                return $appName . '/' . $folder . '/' . $name;
             }
             return $this->normalImg();
         } else if ($type == "portrait") {
 
-            $name = $panel_data['panel_portrait_no_img'];
+            $name = $panel_data['panel_portrait_no_img'] ?? '';
             if ($folder && $name && Storage::disk('public')->exists($folder . '/' . $name)) {
-                return $appName . $folder . '/' . $name;
+                return $appName . '/' . $folder . '/' . $name;
             }
             return $this->normalImg();
         }
@@ -213,15 +158,15 @@ class Common extends Model
     public function normalImg() // Normal Image
     {
         $panel_data = Setting_Data();
-        $appName = Config::get('app.image_url');
+        $appName = rtrim((string) Config::get('app.image_url'), '/');
         $folder = "app";
 
-        $name = $panel_data['panel_normal_no_img'];
+        $name = $panel_data['panel_normal_no_img'] ?? '';
 
         if ($name != "") {
 
             if (Storage::disk('public')->exists($folder . '/' . $name)) {
-                return $appName . $folder . '/' . $name;
+                return $appName . '/' . $folder . '/' . $name;
             } else {
                 return asset('assets/imgs/no_img.png');
             }
@@ -232,184 +177,125 @@ class Common extends Model
     public function getVideo($folder = "", $name = "", $storage_type = 1)
     {
         try {
-
-            if ($storage_type == 1) {
-
-                $appName = Config::get('app.image_url');
-
-                if ($folder != "" && $name != "") {
-                    if (Storage::disk('public')->exists($folder . '/' . $name)) {
-                        $name = $appName . $folder . '/' . $name;
-                    } else {
-                        $name = "";
-                    }
-                } else {
-                    $name = "";
-                }
-            } else if ($storage_type == 2) {
-
-                if ($name != "" && $folder != "") {
-
-                    $storage = Storage_Setting();
-                    $appName = $storage['s3_endpoint'];
-                    $bucket_name = $storage['s3_bucket_name'];
-
-                    if (Storage::disk('s3')->exists($folder . '/' . $name)) {
-                        $name =  'https://' . $bucket_name . '.' . $appName . '/' . $folder . '/' . $name;
-                    } else {
-                        $name = "";
-                    }
-                } else {
-                    $name = "";
-                }
-            } else if ($storage_type == 3) {
-
-                if ($name != "" && $folder != "") {
-
-                    $storage = Storage_Setting();
-                    $appName = $storage['wasabi_endpoint'];
-                    $bucket_name = $storage['wasabi_bucket_name'];
-
-                    if (Storage::disk('wasabi')->exists($folder . '/' . $name)) {
-                        $name =  $appName . '/' . $bucket_name . '/' . $folder . '/' . $name;
-                    } else {
-                        $name = "";
-                    }
-                } else {
-                    $name = "";
-                }
-            }
-            return $name;
-        } catch (Exception $e) {
-            return response()->json(['status' => 400, 'errors' => $e->getMessage()]);
+            return $this->resolveMediaUrl($folder, $name, (int) $storage_type) ?? '';
+        } catch (Throwable $e) {
+            Log::warning('Unable to resolve video URL.', [
+                'folder' => $folder,
+                'name' => $name,
+                'storage_type' => $storage_type,
+                'error' => $e->getMessage(),
+            ]);
+            return '';
         }
     }
+
+    /** Convert stored video names to URLs in-place, including cloud URLs. */
     public function videoNameToUrl($array, $column, $folder)
     {
         try {
-
             foreach ($array as $key => $value) {
-
-                if ($value['video_storage_type'] == 1) {
-                    $appName = Config::get('app.image_url');
-
-                    if (isset($value[$column]) && $value[$column] != "") {
-
-                        if (Storage::disk('public')->exists($folder . '/' . $value[$column])) {
-                            $value[$column] = $appName . $folder . '/' . $value[$column];
-                        } else {
-                            $value[$column] = "";
-                        }
-                    } else {
-
-                        $value[$column] = "";
-                    }
-                } else if ($value['video_storage_type'] == 2) {
-
-                    if (isset($value[$column]) && $value[$column] != "") {
-
-                        $storage = Storage_Setting();
-                        $appName = $storage['s3_endpoint'];
-                        $bucket_name = $storage['s3_bucket_name'];
-
-                        $url =   'https://' . $bucket_name . '.' . $appName . '/' . $folder . '/' . $value[$column];
-                        if (Storage::disk('s3')->exists($folder . '/' . $value[$column])) {
-                            $value[$column] = $url;
-                        } else {
-                            $value[$column] = "";
-                        }
-                    } else {
-                        $value[$column] = "";
-                    }
-                } else if ($value['video_storage_type'] == 3) {
-
-                    if (isset($value[$column]) && $value[$column] != "") {
-
-                        $storage = Storage_Setting();
-                        $appName = $storage['wasabi_endpoint'];
-                        $bucket_name = $storage['wasabi_bucket_name'];
-
-                        $url =   $appName . '/' . $bucket_name . '/' . $folder . '/' . $value[$column];
-                        if (Storage::disk('wasabi')->exists($folder . '/' . $value[$column])) {
-                            $value[$column] = $url;
-                        } else {
-                            $value[$column] = "";
-                        }
-                    } else {
-                        $value[$column] = "";
-                    }
-                }
+                $storageType = (int) ($value['video_storage_type'] ?? 1);
+                $value[$column] = $this->resolveMediaUrl($folder, $value[$column] ?? '', $storageType) ?? '';
+                $array[$key] = $value;
             }
             return $array;
-        } catch (Exception $e) {
-            return response()->json(['status' => 400, 'errors' => $e->getMessage()]);
+        } catch (Throwable $e) {
+            Log::warning('Unable to resolve video URLs.', ['error' => $e->getMessage()]);
+            return $array;
         }
     }
     public function TrailerNameToUrl($array, $column, $folder)
     {
         try {
-
             foreach ($array as $key => $value) {
-
-                if ($value['trailer_storage_type'] == 1) {
-
-                    $appName = Config::get('app.image_url');
-
-                    if (isset($value[$column]) && $value[$column] != "") {
-
-                        if (Storage::disk('public')->exists($folder . '/' . $value[$column])) {
-                            $value[$column] = $appName . $folder . '/' . $value[$column];
-                        } else {
-                            $value[$column] = "";
-                        }
-                    } else {
-
-                        $value[$column] = "";
-                    }
-                } else if ($value['trailer_storage_type'] == 2) {
-
-                    if (isset($value[$column]) && $value[$column] != "") {
-
-                        $storage = Storage_Setting();
-                        $appName = $storage['s3_endpoint'];
-                        $bucket_name = $storage['s3_bucket_name'];
-
-                        $url =   'https://' . $bucket_name . '.' . $appName . '/' . $folder . '/' . $value[$column];
-                        if (Storage::disk('s3')->exists($folder . '/' . $value[$column])) {
-                            $value[$column] = $url;
-                        } else {
-                            $value[$column] = "";
-                        }
-                    } else {
-                        $value[$column] = "";
-                    }
-                } else if ($value['trailer_storage_type'] == 3) {
-
-                    if (isset($value[$column]) && $value[$column] != "") {
-
-                        $storage = Storage_Setting();
-                        $appName = $storage['wasabi_endpoint'];
-                        $bucket_name = $storage['wasabi_bucket_name'];
-
-                        $url =   $appName . '/' . $bucket_name . '/' . $folder . '/' . $value[$column];
-                        if (Storage::disk('wasabi')->exists($folder . '/' . $value[$column])) {
-                            $value[$column] = $url;
-                        } else {
-                            $value[$column] = "";
-                        }
-                    } else {
-                        $value[$column] = "";
-                    }
-                }
+                $storageType = (int) ($value['trailer_storage_type'] ?? 1);
+                $value[$column] = $this->resolveMediaUrl($folder, $value[$column] ?? '', $storageType) ?? '';
+                $array[$key] = $value;
             }
             return $array;
-        } catch (Exception $e) {
-            return response()->json(['status' => 400, 'errors' => $e->getMessage()]);
+        } catch (Throwable $e) {
+            Log::warning('Unable to resolve trailer URLs.', ['error' => $e->getMessage()]);
+            return $array;
         }
+    }
+
+    private function resolveMediaUrl(string $folder, $name, int $storageType): ?string
+    {
+        $name = trim((string) $name);
+        if ($name === '') {
+            return null;
+        }
+        if ($this->isRemoteUrl($name)) {
+            return $name;
+        }
+
+        $path = trim($folder, '/') . '/' . ltrim($name, '/');
+        if ($folder === '') {
+            $path = ltrim($name, '/');
+        }
+
+        $diskName = match ($storageType) {
+            2 => 's3',
+            3 => 'wasabi',
+            default => 'public',
+        };
+        $disk = Storage::disk($diskName);
+        if (!$disk->exists($path)) {
+            return null;
+        }
+
+        if ($diskName === 'public') {
+            return rtrim((string) Config::get('app.image_url'), '/') . '/' . $path;
+        }
+
+        $publicBase = $this->configuredPublicStorageUrl($diskName);
+        if ($publicBase !== '') {
+            return rtrim($publicBase, '/') . '/' . $path;
+        }
+
+        // R2 buckets are normally private. Use a short-lived signed URL so
+        // playback does not depend on public bucket ACLs or virtual-host URLs.
+        try {
+            return $disk->temporaryUrl($path, now()->addMinutes((int) env('DTLIVE_MEDIA_URL_TTL', 60)));
+        } catch (Throwable $e) {
+            Log::warning('Unable to create a signed media URL.', [
+                'disk' => $diskName,
+                'path' => $path,
+                'error' => $e->getMessage(),
+            ]);
+            return null;
+        }
+    }
+
+    private function configuredPublicStorageUrl(string $diskName): string
+    {
+        $envUrl = env('DTLIVE_MEDIA_PUBLIC_URL', '');
+        if ($envUrl !== '') {
+            return rtrim((string) $envUrl, '/');
+        }
+
+        $storage = Storage_Setting();
+        $key = $diskName === 's3' ? 's3_public_url' : 'wasabi_public_url';
+        return rtrim((string) ($storage[$key] ?? ''), '/');
+    }
+
+    private function isRemoteUrl(string $value): bool
+    {
+        return (bool) preg_match('/^https?:\\/\\//i', $value);
     }
     public function deleteImageToFolder($folder, $name, $storage_type)
     {
         try {
+            $name = trim((string) $name);
+            if ($name === '') {
+                return;
+            }
+            if ($this->isRemoteUrl($name)) {
+                $name = basename((string) parse_url($name, PHP_URL_PATH));
+            }
+            if ($name === '' || $name === '.' || $name === '..') {
+                return;
+            }
 
             if ($storage_type == 1) {
                 Storage::disk('public')->delete($folder . '/' . $name);

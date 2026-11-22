@@ -37,16 +37,19 @@ class AppServiceProvider extends ServiceProvider
             return Storage_Setting();
         });
 
-        if ($storage) {
+        if (is_array($storage)) {
             $s3Endpoint = trim((string) ($storage['s3_endpoint'] ?? ''));
+            if ($s3Endpoint !== '' && !preg_match('/^https?:\/\//i', $s3Endpoint)) {
+                $s3Endpoint = 'https://' . $s3Endpoint;
+            }
 
             // AWS S3
             Config::set('filesystems.disks.s3', [
                 'driver' => 's3',
-                'key'    => $storage['s3_access_key'],
-                'secret' => $storage['s3_secret_key'],
-                'region' => $storage['s3_region'],
-                'bucket' => $storage['s3_bucket_name'],
+                'key'    => $storage['s3_access_key'] ?? env('AWS_ACCESS_KEY_ID'),
+                'secret' => $storage['s3_secret_key'] ?? env('AWS_SECRET_ACCESS_KEY'),
+                'region' => (($storage['s3_region'] ?? '') ?: 'auto'),
+                'bucket' => $storage['s3_bucket_name'] ?? env('AWS_BUCKET'),
                 // Cloudflare R2 is S3-compatible and requires its endpoint
                 // to be passed to the runtime client (the admin setting is
                 // stored in s3_endpoint). Path-style addressing is reliable
@@ -58,11 +61,11 @@ class AppServiceProvider extends ServiceProvider
             // Wasabi
             Config::set('filesystems.disks.wasabi', [
                 'driver' => 's3',
-                'key' => $storage['wasabi_access_key'],
-                'secret' => $storage['wasabi_secret_key'],
-                'region' => $storage['wasabi_region'],
-                'bucket' => $storage['wasabi_bucket_name'],
-                'endpoint' => $storage['wasabi_endpoint'],
+                'key' => $storage['wasabi_access_key'] ?? env('WASABI_ACCESS_KEY_ID'),
+                'secret' => $storage['wasabi_secret_key'] ?? env('WASABI_SECRET_ACCESS_KEY'),
+                'region' => (($storage['wasabi_region'] ?? '') ?: env('WASABI_DEFAULT_REGION', 'ap-southeast-1')),
+                'bucket' => $storage['wasabi_bucket_name'] ?? env('WASABI_BUCKET'),
+                'endpoint' => $storage['wasabi_endpoint'] ?? env('WASABI_ENDPOINT'),
             ]);
         }
     }
