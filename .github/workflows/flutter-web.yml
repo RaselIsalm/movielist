@@ -51,9 +51,12 @@ jobs:
           from pathlib import Path
 
           output = Path(os.environ['RUNNER_TEMP']) / 'dtlive-build.json'
+          token = os.environ['DTLIVE_API_TOKEN'].strip()
+          if len(token) >= 2 and token[0] == token[-1] and token[0] in "'\"":
+              token = token[1:-1].strip()
           output.write_text(json.dumps({
               'DTLIVE_BASE_URL': os.environ['DTLIVE_BASE_URL'],
-              'DTLIVE_API_TOKEN': os.environ['DTLIVE_API_TOKEN'],
+              'DTLIVE_API_TOKEN': token,
               'DTLIVE_WEB_DOMAIN_URL': os.environ['DTLIVE_WEB_DOMAIN_URL'],
           }))
           print(output)
