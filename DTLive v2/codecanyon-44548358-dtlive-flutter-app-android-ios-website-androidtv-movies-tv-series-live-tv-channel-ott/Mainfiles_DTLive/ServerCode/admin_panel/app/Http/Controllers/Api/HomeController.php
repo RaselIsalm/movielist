@@ -48,6 +48,7 @@ use Illuminate\Support\Facades\Validator;
 use Exception;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Schema;
 
 // Video Type = 1-Video, 2-Show, 3-Language, 4-Category, 5-Upcoming, 6-Channel, 7-Kids, 8- Shorts
 // Video Upload Type = server_video, external, youtube, live_stream_url
@@ -1618,6 +1619,320 @@ class HomeController extends Controller
         } catch (Exception $e) {
             return response()->json(['status' => 400, 'errors' => $e->getMessage()]);
         }
+    }
+
+    /**
+     * Lightweight, cursor-based section metadata for the feed v2 client.
+     * The legacy section_list endpoint remains unchanged for older clients.
+     */
+    public function feed_sections(Request $request)
+    {
+        try {
+            $validation = Validator::make($request->all(), [
+                'is_home_screen' => 'required|integer|in:1,2',
+                'type_id' => 'required|integer',
+                'limit' => 'nullable|integer|min:1|max:30',
+                'cursor' => 'nullable|string|max:512',
+            ]);
+            if ($validation->fails()) {
+                return response()->json(['status' => 422, 'errors' => [$validation->errors()->first()]], 422);
+            }
+
+            $limit = min(30, max(1, (int) ($request->input('limit') ?: 10)));
+            $isHomeScreen = (int) $request->input('is_home_screen');
+            $typeId = (int) $request->input('type_id');
+            $userId = (int) ($request->input('user_id') ?: 0);
+            $deviceId = (string) ($request->input('device_id') ?: '');
+            $parentControl = $this->common->check_user_parent_control_status($userId, $deviceId);
+
+            $query = Home_Section::query()
+                ->select([
+                    'id', 'section_type', 'is_home_screen', 'video_type', 'sub_video_type',
+                    'type_id', 'title', 'short_title', 'screen_layout', 'category_id',
+                    'language_id', 'channel_id', 'content_ids', 'order_by_upload',
+                    'order_by_view', 'premium_video', 'no_of_content',
+                    'view_all', 'is_title', 'status', 'sort_order',
+                ])
+                ->where('is_home_screen', $isHomeScreen)
+                ->where('status', 1)
+                ->when($isHomeScreen === 2, fn ($builder) => $builder->where('type_id', $typeId))
+                ->when($parentControl === 1, fn ($builder) => $builder->whereIn('video_type', [7, 101]))
+                ->orderBy('sort_order')
+                ->orderBy('id');
+
+            $after = $this->decodeFeedCursor($request->input('cursor'));
+            if ($after !== null) {
+                $query->where(function ($builder) use ($after): void {
+                    $builder->where('sort_order', '>', (int) ($after['sort_order'] ?? 0))
+                        ->orWhere(function ($nested) use ($after): void {
+                            $nested->where('sort_order', (int) ($after['sort_order'] ?? 0))
+                                ->where('id', '>', (int) ($after['id'] ?? 0));
+                        });
+                });
+            }
+
+            $rows = $query->limit($limit + 1)->get();
+            $hasMore = $rows->count() > $limit;
+            $rows = $rows->take($limit)->values();
+            $last = $rows->last();
+            $nextCursor = $hasMore && $last
+                ? $this->encodeFeedCursor(['sort_order' => (int) $last->sort_order, 'id' => (int) $last->id])
+                : null;
+
+            $payload = [
+                'status' => 200,
+                'message' => __('api_msg.data_retrieved'),
+                'result' => $rows,
+                'next_cursor' => $nextCursor,
+                'has_more' => $hasMore,
+            ];
+
+            $response = response()->json($payload)
+                ->setEtag(md5(json_encode($payload, JSON_UNESCAPED_SLASHES)))
+                ->header('Cache-Control', $userId > 0 ? 'private, max-age=0, stale-while-revalidate=30' : 'public, max-age=15, stale-while-revalidate=60');
+            $response->isNotModified($request);
+            return $response;
+        } catch (Exception $e) {
+            return response()->json(['status' => 400, 'errors' => [$e->getMessage()]], 400);
+        }
+    }
+
+    /** Return only the cards needed by one visible home section. */
+    public function feed_section_items(Request $request)
+    {
+        try {
+            $validation = Validator::make($request->all(), [
+                'section_id' => 'required|integer',
+                'limit' => 'nullable|integer|min:1|max:30',
+                'cursor' => 'nullable|string|max:512',
+            ]);
+            if ($validation->fails()) {
+                return response()->json(['status' => 422, 'errors' => [$validation->errors()->first()]], 422);
+            }
+
+            $section = Home_Section::where('id', (int) $request->input('section_id'))
+                ->where('status', 1)->first();
+            if (!$section) {
+                return response()->json(['status' => 404, 'message' => __('api_msg.data_not_found')], 404);
+            }
+
+            $limit = min(30, max(1, (int) ($request->input('limit') ?: 12)));
+            $userId = (int) ($request->input('user_id') ?: 0);
+            $deviceId = (string) ($request->input('device_id') ?: '');
+            $parentControl = $this->common->check_user_parent_control_status($userId, $deviceId);
+            $videoType = (int) $section->video_type;
+            $subVideoType = (int) $section->sub_video_type;
+
+            $isVideo = $videoType === 1 || (in_array($videoType, [5, 6, 7], true) && $subVideoType === 1);
+            $isShow = $videoType === 2 || (in_array($videoType, [5, 6, 7], true) && $subVideoType === 2);
+            if (!$isVideo && !$isShow) {
+                $legacy = $this->feedLegacySectionItems($section, $userId, $deviceId, $parentControl, $limit);
+                return response()->json([
+                    'status' => 200,
+                    'message' => __('api_msg.data_retrieved'),
+                    'result' => $legacy,
+                    'next_cursor' => null,
+                    'has_more' => false,
+                ]);
+            }
+
+            $model = $isVideo ? Video::query() : TVShow::query();
+            $table = $isVideo ? 'tbl_video' : 'tbl_tv_show';
+            $select = [
+                "$table.id", "$table.type_id", "$table.video_type", "$table.channel_id",
+                "$table.producer_id", "$table.name", "$table.storage_type", "$table.thumbnail",
+                "$table.landscape",
+                "$table.video_320", "$table.video_storage_type", "$table.video_upload_type",
+                "$table.video_duration", "$table.is_premium", "$table.is_title", "$table.is_rent",
+                "$table.price", "$table.total_view", "$table.status", "$table.created_at",
+            ];
+            foreach (['thumbnail_webp', 'landscape_webp'] as $webpColumn) {
+                if (Schema::hasColumn($table, $webpColumn)) {
+                    $select[] = "$table.$webpColumn";
+                }
+            }
+            $model->select($select)
+                ->where("$table.status", 1)->where("$table.video_type", $videoType);
+
+            if ($parentControl === 1) {
+                $model->where("$table.video_type", 7);
+            }
+            if ((int) $section->type_id > 0) {
+                $model->where("$table.type_id", (int) $section->type_id);
+            }
+            if ((int) $section->section_type === 1) {
+                $curatedIds = array_values(array_filter(array_map('intval', explode(',', (string) $section->content_ids))));
+                if ($curatedIds !== []) {
+                    $model->whereIn("$table.id", $curatedIds);
+                }
+            }
+
+            $this->applyFeedTaxonomyFilter($model, $table, $isVideo, 'category_id', (int) $section->category_id);
+            $this->applyFeedTaxonomyFilter($model, $table, $isVideo, 'language_id', (int) $section->language_id);
+            if ((int) $section->channel_id > 0) {
+                $model->where("$table.channel_id", (int) $section->channel_id);
+            }
+            if ((int) $section->premium_video === 1) {
+                $model->where("$table.is_premium", 1);
+            } elseif ((int) $section->premium_video === 0) {
+                $model->where("$table.is_premium", 0);
+            }
+
+            $sortByView = (int) $section->order_by_view === 2;
+            $ascending = !$sortByView && (int) $section->order_by_upload === 1;
+            $sortColumn = $sortByView ? 'total_view' : 'created_at';
+            $direction = $ascending ? 'asc' : 'desc';
+            $model->orderBy("$table.$sortColumn", $direction)->orderBy("$table.id", $direction);
+
+            $after = $this->decodeFeedCursor($request->input('cursor'));
+            if ($after !== null && isset($after['sort'])) {
+                $operator = $direction === 'asc' ? '>' : '<';
+                $model->where(function ($builder) use ($table, $sortColumn, $operator, $after): void {
+                    $builder->where("$table.$sortColumn", $operator, $after['sort'])
+                        ->orWhere(function ($nested) use ($table, $sortColumn, $operator, $after): void {
+                            $nested->where("$table.$sortColumn", $after['sort'])
+                                ->where("$table.id", $operator, (int) $after['id']);
+                        });
+                });
+            }
+
+            $rows = $model->limit($limit + 1)->get();
+            $hasMore = $rows->count() > $limit;
+            $rows = $rows->take($limit)->values();
+            $last = $rows->last();
+            $nextCursor = $hasMore && $last
+                ? $this->encodeFeedCursor(['sort' => $last->{$sortColumn}, 'id' => (int) $last->id])
+                : null;
+
+            $buy = $userId > 0 ? (int) $this->common->is_any_package_buy($userId) : 0;
+            $bookmarkSubType = in_array($videoType, [5, 6, 7], true) ? $subVideoType : 0;
+            $bookmarkIds = $userId > 0 && $rows->isNotEmpty()
+                ? Bookmark::query()
+                    ->where('user_id', $userId)
+                    ->where('is_kids_profile', $parentControl)
+                    ->where('video_type', $videoType)
+                    ->where('sub_video_type', $bookmarkSubType)
+                    ->where('status', 1)
+                    ->whereIn('video_id', $rows->pluck('id')->map(fn ($id) => (int) $id)->all())
+                    ->pluck('video_id')
+                    ->mapWithKeys(fn ($id) => [(int) $id => true])
+                    ->all()
+                : [];
+            $result = $rows->map(function ($row) use ($isVideo, $videoType, $subVideoType, $userId, $parentControl, $buy, $bookmarkIds): array {
+                $item = $row->toArray();
+                $thumbName = trim((string) ($item['thumbnail_webp'] ?? '')) ?: (string) ($item['thumbnail'] ?? '');
+                $landscapeName = trim((string) ($item['landscape_webp'] ?? '')) ?: (string) ($item['landscape'] ?? '');
+                $item['thumbnail'] = $this->common->getImage($this->folder_content, $thumbName, 'portrait', (int) ($item['storage_type'] ?? 1));
+                $item['landscape'] = $this->common->getImage($this->folder_content, $landscapeName, 'landscape', (int) ($item['storage_type'] ?? 1));
+                if (($item['video_upload_type'] ?? '') === 'server_video') {
+                    $item['video_320'] = $this->common->getVideo(
+                        $this->folder_content,
+                        (string) ($item['video_320'] ?? ''),
+                        (int) ($item['video_storage_type'] ?? 1)
+                    );
+                }
+                $item['is_buy'] = $buy;
+                $item['is_bookmark'] = isset($bookmarkIds[(int) $row->id]) ? 1 : 0;
+                $item['sub_video_type'] = $isVideo ? $subVideoType : 0;
+                unset($item['thumbnail_webp'], $item['landscape_webp'], $item['storage_type']);
+                return $item;
+            })->all();
+
+            $payload = [
+                'status' => 200,
+                'message' => __('api_msg.data_retrieved'),
+                'result' => $result,
+                'next_cursor' => $nextCursor,
+                'has_more' => $hasMore,
+            ];
+            $response = response()->json($payload)
+                ->setEtag(md5(json_encode($payload, JSON_UNESCAPED_SLASHES)))
+                ->header('Cache-Control', $userId > 0 ? 'private, max-age=0, stale-while-revalidate=30' : 'public, max-age=15, stale-while-revalidate=60');
+            $response->isNotModified($request);
+            return $response;
+        } catch (Exception $e) {
+            return response()->json(['status' => 400, 'errors' => [$e->getMessage()]], 400);
+        }
+    }
+
+    /**
+     * Keep taxonomy/channel/continue-watching sections compatible with the
+     * cursor feed without making the main video query load every section type.
+     */
+    private function feedLegacySectionItems(Home_Section $section, int $userId, string $deviceId, int $parentControl, int $limit): array
+    {
+        $type = (int) $section->video_type;
+        $sectionType = (int) $section->section_type;
+        $contentIds = array_values(array_filter(array_map('intval', explode(',', (string) $section->content_ids))));
+
+        if ($type === 3 || $type === 4) {
+            $model = $type === 3 ? Category::query() : Language::query();
+            $folder = $type === 3 ? $this->folder_category : $this->folder_language;
+            if ($sectionType === 1 && $contentIds !== []) {
+                $model->whereIn('id', $contentIds);
+            } else {
+                $model->orderBy('sort_order')->orderByDesc('id');
+            }
+            $items = $model->limit($limit)->get();
+            $this->common->imageNameToUrl($items, 'image', $folder, 'normal');
+            return $items->values()->map(fn ($item) => $item->toArray())->all();
+        }
+
+        if ($type === 8) {
+            $query = Shorts::query()->where('status', 1);
+            if ($sectionType === 1 && $contentIds !== []) {
+                $query->whereIn('id', $contentIds);
+            } else {
+                if ((int) $section->type_id > 0) $query->where('type_id', (int) $section->type_id);
+                if ((int) $section->category_id > 0) $query->whereRaw('FIND_IN_SET(?, category_id)', [(int) $section->category_id]);
+                if ((int) $section->language_id > 0) $query->whereRaw('FIND_IN_SET(?, language_id)', [(int) $section->language_id]);
+                if ((int) $section->order_by_view === 2) $query->orderByDesc('total_view');
+                else $query->orderByDesc('id');
+            }
+            $items = $query->limit($limit)->get();
+            $this->common->add_url_to_array(4, $items);
+            return $items->values()->map(fn ($item) => $item->toArray())->all();
+        }
+
+        if ($type === 102) {
+            $query = Channel::query();
+            if ($sectionType === 1 && $contentIds !== []) $query->whereIn('id', $contentIds);
+            else $query->orderByDesc('id');
+            $items = $query->limit($limit)->get();
+            $this->common->imageNameToUrl($items, 'portrait_img', $this->folder_channel, 'portrait');
+            $this->common->imageNameToUrl($items, 'landscape_img', $this->folder_channel, 'landscape');
+            return $items->values()->map(fn ($item) => $item->toArray())->all();
+        }
+
+        if ($type === 101 && $userId > 0) {
+            $watches = Video_Watch::query()
+                ->where('user_id', $userId)
+                ->where('is_kids_profile', $parentControl)
+                ->where('status', 1)
+                ->orderByDesc('id')
+                ->limit($limit)
+                ->get();
+            $result = [];
+            foreach ($watches as $watch) {
+                $isShow = (int) $watch->video_type === 2 || ((int) $watch->sub_video_type === 2 && in_array((int) $watch->video_type, [6, 7], true));
+                $content = $isShow
+                    ? TVShow::where('id', (int) $watch->video_id)->where('status', 1)->where('video_type', (int) $watch->video_type)->first()
+                    : Video::where('id', (int) $watch->video_id)->where('status', 1)->where('video_type', (int) $watch->video_type)->first();
+                if (!$content) continue;
+                $item = $content->toArray();
+                $storageType = (int) ($item['storage_type'] ?? 1);
+                $item['thumbnail'] = $this->common->getImage($this->folder_content, (string) ($item['thumbnail'] ?? ''), 'portrait', $storageType);
+                $item['landscape'] = $this->common->getImage($this->folder_content, (string) ($item['landscape'] ?? ''), 'landscape', $storageType);
+                $item['is_bookmark'] = 0;
+                $item['sub_video_type'] = (int) ($watch->sub_video_type ?? 0);
+                $item['stop_time'] = (int) ($watch->stop_time ?? 0);
+                unset($item['storage_type']);
+                $result[] = $item;
+            }
+            return $result;
+        }
+
+        return [];
     }
     public function section_detail(Request $request)
     {
@@ -4226,5 +4541,57 @@ class HomeController extends Controller
         } elseif ($videoType == 8) {
             Shorts::where('id', $videoId)->update(['avg_rating' => $avg, 'total_review' => $count]);
         }
+    }
+
+    private function encodeFeedCursor(array $payload): string
+    {
+        $json = json_encode($payload, JSON_UNESCAPED_SLASHES);
+        return rtrim(strtr(base64_encode((string) $json), '+/', '-_'), '=');
+    }
+
+    private function decodeFeedCursor($cursor): ?array
+    {
+        if (!is_string($cursor) || trim($cursor) === '') {
+            return null;
+        }
+        try {
+            $encoded = strtr($cursor, '-_', '+/');
+            $encoded .= str_repeat('=', (4 - strlen($encoded) % 4) % 4);
+            $decoded = json_decode(base64_decode($encoded, true) ?: '', true);
+            return is_array($decoded) ? $decoded : null;
+        } catch (Throwable $e) {
+            return null;
+        }
+    }
+
+    private function applyFeedTaxonomyFilter($query, string $table, bool $isVideo, string $taxonomy, int $value): void
+    {
+        if ($value <= 0) {
+            return;
+        }
+
+        $prefix = $isVideo ? 'video' : 'tv_show';
+        $relationName = match ($taxonomy) {
+            'category_id' => 'categories',
+            'language_id' => 'languages',
+            'cast_id' => 'cast',
+            default => null,
+        };
+        if ($relationName === null) {
+            return;
+        }
+        $relationTable = $prefix . '_' . $relationName;
+        $contentColumn = $isVideo ? 'video_id' : 'tv_show_id';
+        if (Schema::hasTable($relationTable)) {
+            $query->whereExists(function ($builder) use ($relationTable, $contentColumn, $table, $value): void {
+                $builder->selectRaw('1')
+                    ->from($relationTable)
+                    ->whereColumn($relationTable . '.' . $contentColumn, $table . '.id')
+                    ->where($relationTable . '.' . (str_contains($relationTable, 'categories') ? 'category_id' : (str_contains($relationTable, 'languages') ? 'language_id' : 'cast_id')), $value);
+            });
+            return;
+        }
+
+        $query->whereRaw('FIND_IN_SET(?, ' . $table . '.' . $taxonomy . ')', [$value]);
     }
 }

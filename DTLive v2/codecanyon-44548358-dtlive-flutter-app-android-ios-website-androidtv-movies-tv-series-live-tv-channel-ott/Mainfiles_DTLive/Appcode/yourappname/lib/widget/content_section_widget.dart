@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 
 import '../model/sectionlistmodel.dart' as list;
 import '../utils/color.dart';
@@ -9,6 +12,7 @@ import '../utils/dimens.dart';
 import '../utils/utils.dart';
 import 'mynetworkimg.dart';
 import 'mytext.dart';
+import '../service/media_prewarm_service.dart';
 
 enum ContentCardLayout {
   landscape,
@@ -321,11 +325,21 @@ class _ContentCardState extends State<_ContentCard>
     final double iconSize = widget.isBig ? 30.0 : 26.0;
 
     return MouseRegion(
-      onEnter: (_) => _ctrl.forward(),
+      onEnter: (_) {
+        _ctrl.forward();
+        unawaited(MediaPrewarmService.prewarm(widget.datum.video320));
+      },
       onExit: (_) => _ctrl.reverse(),
-      child: AnimatedBuilder(
-        animation: _ctrl,
-        builder: (context, child) {
+      child: VisibilityDetector(
+        key: Key('feed-card-${widget.datum.id}-${widget.datum.videoType}'),
+        onVisibilityChanged: (info) {
+          if (info.visibleFraction >= 0.15) {
+            unawaited(MediaPrewarmService.prewarm(widget.datum.video320));
+          }
+        },
+        child: AnimatedBuilder(
+          animation: _ctrl,
+          builder: (context, child) {
           return GestureDetector(
             onTap: widget.onTap,
             child: Transform.scale(
@@ -473,7 +487,8 @@ class _ContentCardState extends State<_ContentCard>
               ),
             ),
           );
-        },
+          },
+        ),
       ),
     );
   }

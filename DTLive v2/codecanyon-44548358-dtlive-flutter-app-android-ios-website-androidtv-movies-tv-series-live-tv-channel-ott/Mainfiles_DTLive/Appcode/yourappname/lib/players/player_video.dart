@@ -1554,13 +1554,6 @@ class _PlayerVideoState extends State<PlayerVideo>
                               child: _adDisplayContainer!,
                             ),
 
-                          // Initial spinner when neither ad nor content is ready
-                          if (!_isAdActuallyPlaying &&
-                              !_shouldShowContentVideo &&
-                              (!_isControllerReady || // [FIX]
-                                  !_videoPlayerController.value.isInitialized))
-                            Center(child: Utils.pageLoader()),
-
                           // [NEW] FEATURE-2: Lock screen overlay — absorbs all input when locked
                           if (_isScreenLocked) _buildLockOverlay(),
                         ],
@@ -1625,10 +1618,10 @@ class _PlayerVideoState extends State<PlayerVideo>
 
     // [FIX] MUST check _isControllerReady FIRST — late field not assigned yet
     if (!_isControllerReady) {
-      child = _buildLoadingView(key: const ValueKey('loading-init'));
+      child = _buildPosterView(key: const ValueKey('poster-init'));
     } else if (!_shouldShowContentVideo &&
         !_videoPlayerController.value.isInitialized) {
-      child = _buildLoadingView(key: const ValueKey('loading-wait'));
+      child = _buildPosterView(key: const ValueKey('poster-wait'));
     } else if (_shouldShowContentVideo &&
         _videoPlayerController.value.isInitialized) {
       child = _buildPlayer(key: const ValueKey('video-player'));
@@ -1637,10 +1630,11 @@ class _PlayerVideoState extends State<PlayerVideo>
       // Ad is playing — show black fill (ad container is above this in the Stack)
       child = Container(
         key: const ValueKey('ad-placeholder'),
-        color: black, // [IMP-4]
+        color: black,
+        child: _buildPosterView(),
       );
     } else {
-      child = _buildLoadingView(key: const ValueKey('loading-init2')); // [FIX]
+      child = _buildPosterView(key: const ValueKey('poster-init2'));
     }
 
     return AnimatedSwitcher(
@@ -1650,6 +1644,23 @@ class _PlayerVideoState extends State<PlayerVideo>
       transitionBuilder: (child, animation) =>
           FadeTransition(opacity: animation, child: child),
       child: child,
+    );
+  }
+
+  Widget _buildPosterView({Key? key}) {
+    final poster = (widget.playerModel.videoThumb ?? '').trim();
+    return Container(
+      key: key,
+      color: black,
+      alignment: Alignment.center,
+      child: poster.isEmpty
+          ? const SizedBox.expand()
+          : MyNetworkImage(
+              imageUrl: poster,
+              fit: BoxFit.contain,
+              width: double.infinity,
+              height: double.infinity,
+            ),
     );
   }
 

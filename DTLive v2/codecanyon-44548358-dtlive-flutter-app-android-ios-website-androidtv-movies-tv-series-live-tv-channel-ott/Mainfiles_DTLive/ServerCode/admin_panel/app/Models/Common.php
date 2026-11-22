@@ -32,18 +32,32 @@ class Common extends Model
             $img_ext = $org_name->getClientOriginalExtension();
             $filename = $prefix . date('Y_m_d_') . uniqid() . '.' . $img_ext;
 
+            if (str_starts_with((string) $org_name->getMimeType(), 'image/') && function_exists('imagewebp')) {
+                $webp = $this->webpBinary($org_name->getRealPath());
+                if ($webp !== null) {
+                    $filename = $prefix . date('Y_m_d_') . uniqid() . '.webp';
+                    return $this->storeBinary($folder . '/' . $filename, $webp, $storage_type, 'image/webp');
+                }
+            }
+
             if ($storage_type == 1) {
                 if (!$org_name->storeAs($folder, $filename, 'public')) {
                     throw new Exception('Unable to store the uploaded file.');
                 }
             } else if ($storage_type == 2) {
-                if (!$org_name->storeAs($folder, $filename, 's3')) {
+                $stream = fopen($org_name->getRealPath(), 'rb');
+                if ($stream === false || !Storage::disk('s3')->put($folder . '/' . $filename, $stream, $this->mediaOptions((string) ($org_name->getMimeType() ?: 'application/octet-stream')))) {
+                    if (is_resource($stream)) fclose($stream);
                     throw new Exception('Unable to store the uploaded file on S3-compatible storage.');
                 }
+                fclose($stream);
             } else if ($storage_type == 3) {
-                if (!$org_name->storeAs($folder, $filename, 'wasabi')) {
+                $stream = fopen($org_name->getRealPath(), 'rb');
+                if ($stream === false || !Storage::disk('wasabi')->put($folder . '/' . $filename, $stream, $this->mediaOptions((string) ($org_name->getMimeType() ?: 'application/octet-stream')))) {
+                    if (is_resource($stream)) fclose($stream);
                     throw new Exception('Unable to store the uploaded file on Wasabi storage.');
                 }
+                fclose($stream);
             }
             return $filename;
         } catch (Exception $e) {
@@ -60,6 +74,19 @@ class Common extends Model
                 $ext = 'jpg'; // fallback
             }
 
+            $source = @file_get_contents($url);
+            if ($source === false) {
+                throw new Exception('Unable to download the remote image.');
+            }
+            $sourceMime = (new \finfo(FILEINFO_MIME_TYPE))->buffer($source) ?: '';
+            if (str_starts_with($sourceMime, 'image/') && function_exists('imagewebp')) {
+                $webp = $this->webpBinaryFromContents($source);
+                if ($webp !== null) {
+                    $image_name = $prefix . date('Y_m_d_') . uniqid() . '.webp';
+                    return $this->storeBinary($folder . '/' . $image_name, $webp, $storage_type, 'image/webp');
+                }
+            }
+
             // Generate unique filename
             $image_name = $prefix . date('Y_m_d_') . uniqid() . '.' . $ext;
 
@@ -71,26 +98,72 @@ class Common extends Model
                     mkdir($path, 0777, true); // ensure folder exists
                 }
 
-                file_put_contents($path . $image_name, file_get_contents($url));
+                file_put_contents($path . $image_name, $source);
 
                 return $image_name;
             } else if ($storage_type == 2) {
                 // Save directly to S3
                 $path = $folder . '/' . $image_name;
-                Storage::disk('s3')->put($path, file_get_contents($url), 'public');
+                Storage::disk('s3')->put($path, $source, $this->mediaOptions($sourceMime ?: ('image/' . $ext)));
 
                 return $image_name;
             } else if ($storage_type == 3) {
 
                 // Save directly to wasabi
                 $path = $folder . '/' . $image_name;
-                Storage::disk('wasabi')->put($path, file_get_contents($url), 'public');
+                Storage::disk('wasabi')->put($path, $source, $this->mediaOptions($sourceMime ?: ('image/' . $ext)));
 
                 return $image_name;
             }
         } catch (Exception $e) {
             return response()->json(['status' => 400, 'errors' => $e->getMessage()]);
         }
+    }
+
+    private function storeBinary(string $path, string $contents, int $storageType, string $contentType): string
+    {
+        $diskName = match ($storageType) {
+            2 => 's3',
+            3 => 'wasabi',
+            default => 'public',
+        };
+        if (!Storage::disk($diskName)->put($path, $contents, $this->mediaOptions($contentType))) {
+            throw new Exception('Unable to store the media object.');
+        }
+        return basename($path);
+    }
+
+    private function mediaOptions(string $contentType): array
+    {
+        return [
+            'visibility' => 'public',
+            'ContentType' => $contentType,
+            'CacheControl' => 'public, max-age=31536000, immutable',
+        ];
+    }
+
+    private function webpBinary(string $path): ?string
+    {
+        $contents = @file_get_contents($path);
+        return $contents === false ? null : $this->webpBinaryFromContents($contents);
+    }
+
+    private function webpBinaryFromContents(string $contents): ?string
+    {
+        $image = @imagecreatefromstring($contents);
+        if ($image === false) {
+            return null;
+        }
+        $tmp = tempnam(sys_get_temp_dir(), 'dtlive-webp-');
+        if ($tmp === false || !@imagewebp($image, $tmp, 82)) {
+            imagedestroy($image);
+            if ($tmp !== false) @unlink($tmp);
+            return null;
+        }
+        imagedestroy($image);
+        $result = @file_get_contents($tmp) ?: null;
+        @unlink($tmp);
+        return $result;
     }
     public function getImage($folder = "", $name = "", $type = "", $storage_type = 1)
     {
@@ -247,7 +320,9 @@ class Common extends Model
 
         $publicBase = $this->configuredPublicStorageUrl($diskName);
         if ($publicBase !== '') {
-            if (!Storage::disk($diskName)->exists($path)) {
+            // The CDN is the source of truth for immutable public objects.
+            // Avoid one remote HEAD request per card on every feed response.
+            if ($name === '') {
                 return null;
             }
             return rtrim($publicBase, '/') . '/' . $path;
@@ -257,7 +332,7 @@ class Common extends Model
         // presigned responses. Route cloud media through our same-origin
         // range endpoint unless a public/custom media domain was configured.
         // The endpoint keeps the bucket private and supports browser seeking.
-        if (filter_var(env('DTLIVE_MEDIA_PROXY', true), FILTER_VALIDATE_BOOLEAN)) {
+        if (filter_var(config('filesystems.media_proxy', true), FILTER_VALIDATE_BOOLEAN)) {
             $base = rtrim((string) Config::get('app.image_url'), '/');
             if ($base === '') {
                 $base = rtrim(url('/api/media'), '/');
@@ -273,7 +348,7 @@ class Common extends Model
         // R2 buckets are normally private. Use a short-lived signed URL so
         // playback does not depend on public bucket ACLs or virtual-host URLs.
         try {
-            return $disk->temporaryUrl($path, now()->addMinutes((int) env('DTLIVE_MEDIA_URL_TTL', 60)));
+            return $disk->temporaryUrl($path, now()->addMinutes((int) config('filesystems.media_url_ttl', 60)));
         } catch (Throwable $e) {
             Log::warning('Unable to create a signed media URL.', [
                 'disk' => $diskName,
@@ -286,7 +361,7 @@ class Common extends Model
 
     private function configuredPublicStorageUrl(string $diskName): string
     {
-        $envUrl = env('DTLIVE_MEDIA_PUBLIC_URL', '');
+        $envUrl = config('filesystems.media_public_url', '');
         if ($envUrl !== '') {
             return rtrim((string) $envUrl, '/');
         }

@@ -37,8 +37,9 @@ Route::get('media/{folder}/{filename}', function (Request $request, string $fold
         $localPath = $disk->path($path);
         abort_unless(is_file($localPath), 404);
         return response()->file($localPath, [
-            'Cache-Control' => 'public, max-age=3600',
+            'Cache-Control' => 'public, max-age=31536000, immutable',
             'Access-Control-Allow-Origin' => '*',
+            'Access-Control-Expose-Headers' => 'Content-Length, Content-Range, Accept-Ranges, ETag',
         ]);
     }
 
@@ -106,9 +107,10 @@ Route::get('media/{folder}/{filename}', function (Request $request, string $fold
         'Content-Type' => $contentType,
         'Content-Length' => (string) $length,
         'Accept-Ranges' => 'bytes',
-        'Cache-Control' => 'public, max-age=3600',
+        'Cache-Control' => 'public, max-age=31536000, immutable',
         'Content-Disposition' => 'inline; filename="' . addslashes($filename) . '"',
         'Access-Control-Allow-Origin' => '*',
+        'Access-Control-Expose-Headers' => 'Content-Length, Content-Range, Accept-Ranges, ETag',
         'X-Content-Type-Options' => 'nosniff',
     ];
     $status = ($start !== 0 || $end !== $size - 1) ? 206 : 200;
@@ -181,6 +183,8 @@ Route::group(['middleware' => 'apipurchasecode'], function () {
         Route::post('rent_content_list', [HomeController::class, 'rent_content_list']);
         Route::post('get_banner', [HomeController::class, 'get_banner']);
         Route::post('section_list', [HomeController::class, 'section_list']);
+        Route::post('feed_sections', [HomeController::class, 'feed_sections']);
+        Route::post('feed_section_items', [HomeController::class, 'feed_section_items']);
         Route::post('section_detail', [HomeController::class, 'section_detail']);
         Route::post('content_detail', [HomeController::class, 'content_detail']);
         Route::post('get_releted_content', [HomeController::class, 'get_releted_content']);

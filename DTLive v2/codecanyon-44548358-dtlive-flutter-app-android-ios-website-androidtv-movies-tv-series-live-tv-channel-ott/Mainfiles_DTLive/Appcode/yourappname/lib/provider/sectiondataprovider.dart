@@ -19,6 +19,12 @@ class SectionDataProvider extends ChangeNotifier {
   bool loadMore = false;
   int? totalRows, totalPage, currentPage;
   bool? isMorePage;
+  String? feedCursor;
+  final Map<int, String?> sectionCursors = <int, String?>{};
+  final Map<int, bool> sectionMore = <int, bool>{};
+  final Set<int> sectionLoading = <int>{};
+  final Set<int> sectionLoaded = <int>{};
+  bool feedRefreshing = false;
 
   Future<void> getSectionBanner(dynamic typeId, isHomePage) async {
     cBannerIndex = 0;
@@ -41,6 +47,11 @@ class SectionDataProvider extends ChangeNotifier {
     sectionBannerModel = SectionBannerModel();
     sectionList?.clear();
     sectionList = [];
+    feedCursor = null;
+    sectionCursors.clear();
+    sectionMore.clear();
+    sectionLoading.clear();
+    sectionLoaded.clear();
     notifyListeners();
   }
 
@@ -84,6 +95,7 @@ class SectionDataProvider extends ChangeNotifier {
       printLog("getSectionList Exception :==> $e");
       setLoadMore(false);
       loadingSection = false;
+      loadMore = false;
       notifyListeners();
       return;
     }
@@ -124,6 +136,113 @@ class SectionDataProvider extends ChangeNotifier {
     loadingSection = false;
     notifyListeners();
   }
+
+  /// Cursor-based feed for the home page. The numbered API above remains
+  /// available to existing screens and older clients.
+  Future<void> getFeedSections(
+    dynamic typeId,
+    dynamic isHomePage, {
+    bool refresh = false,
+  }) async {
+    final isFirstLoad = sectionList == null || sectionList!.isEmpty;
+    if (refresh) {
+      feedCursor = null;
+      sectionCursors.clear();
+      sectionMore.clear();
+      sectionLoading.clear();
+      sectionLoaded.clear();
+    }
+    feedRefreshing = true;
+    if (isFirstLoad) {
+      loadingSection = true;
+      notifyListeners();
+    }
+    try {
+      final page = await ApiService().feedSections(
+        typeId,
+        isHomePage,
+        cursor: refresh ? null : feedCursor,
+      );
+      final incoming = page.result ?? <section.Result>[];
+      if (refresh || isFirstLoad) {
+        sectionList = incoming;
+      } else {
+        final merged = <String, section.Result>{
+          for (final item in sectionList ?? <section.Result>[]) _sectionKey(item): item,
+        };
+        for (final item in incoming) {
+          merged[_sectionKey(item)] = item;
+        }
+        sectionList = merged.values.toList(growable: true);
+      }
+      feedCursor = page.nextCursor;
+      isMorePage = page.hasMore ?? false;
+      currentPage = (currentPage ?? 0) + 1;
+      totalRows = null;
+      totalPage = null;
+      loadingSection = false;
+      notifyListeners();
+
+      // Individual rows fetch their bounded first page when they enter the
+      // viewport. This keeps distant sections and cards out of the first load.
+    } on Exception catch (e) {
+      printLog('getFeedSections Exception :==> $e');
+      loadingSection = false;
+      loadMore = false;
+    } finally {
+      loadMore = false;
+      feedRefreshing = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> getFeedSectionItems(
+    section.Result sectionItem, {
+    bool refresh = false,
+  }) async {
+    final sectionId = sectionItem.id ?? 0;
+    if (sectionId <= 0) return;
+    if (sectionLoading.contains(sectionId)) return;
+    if (!refresh && sectionLoaded.contains(sectionId) &&
+        !(sectionMore[sectionId] ?? false)) return;
+    sectionLoading.add(sectionId);
+    if (refresh) {
+      sectionLoaded.remove(sectionId);
+      sectionCursors.remove(sectionId);
+    }
+    try {
+      final page = await ApiService().feedSectionItems(
+        sectionId,
+        cursor: refresh ? null : sectionCursors[sectionId],
+        limit: (sectionItem.noOfContent ?? 12).clamp(4, 20).toInt(),
+      );
+      final merged = <String, section.Datum>{
+        for (final item in refresh ? <section.Datum>[] : (sectionItem.data ?? <section.Datum>[])) _itemKey(item): item,
+      };
+      for (final item in page.result) {
+        merged[_itemKey(item)] = item;
+      }
+      sectionItem.data = merged.values.toList(growable: true);
+      sectionCursors[sectionId] = page.nextCursor;
+      sectionMore[sectionId] = page.hasMore;
+      sectionLoaded.add(sectionId);
+    } on Exception catch (e) {
+      printLog('getFeedSectionItems Exception :==> $e');
+    } finally {
+      sectionLoading.remove(sectionId);
+      notifyListeners();
+    }
+  }
+
+  bool hasLoadedFeedSection(int sectionId) => sectionLoaded.contains(sectionId);
+
+  bool isLoadingFeedSection(int sectionId) => sectionLoading.contains(sectionId);
+
+  String _sectionKey(section.Result item) =>
+      '${item.id}-${item.typeId}-${item.videoType}-${item.subVideoType}';
+
+  String _itemKey(section.Datum item) =>
+      '${item.id}-${item.typeId}-${item.videoType}-${item.subVideoType}';
 
   void setLoadMore(bool loadMore) {
     printLog("setLoadMore loadMore :=> $loadMore");
@@ -185,5 +304,11 @@ class SectionDataProvider extends ChangeNotifier {
     totalPage = null;
     currentPage = null;
     isMorePage = null;
+    feedCursor = null;
+    sectionCursors.clear();
+    sectionMore.clear();
+    sectionLoading.clear();
+    sectionLoaded.clear();
+    feedRefreshing = false;
   }
 }

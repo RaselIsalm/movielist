@@ -25,6 +25,23 @@ class MyNetworkImage extends StatefulWidget {
 class _MyNetworkImageState extends State<MyNetworkImage> {
   bool _isPrecached = false;
 
+  Widget _skeleton() {
+    return Container(
+      width: widget.width,
+      height: widget.height,
+      color: const Color(0xFF20242A),
+      child: const DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment(-1.0, -0.2),
+            end: Alignment(1.0, 0.2),
+            colors: [Color(0xFF20242A), Color(0xFF323842), Color(0xFF20242A)],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -35,8 +52,15 @@ class _MyNetworkImageState extends State<MyNetworkImage> {
   }
 
   Future<void> _precacheImage() async {
+    if (widget.imageUrl.trim().isEmpty || widget.imageUrl.contains('no_img')) {
+      return;
+    }
     final image = NetworkImage(widget.imageUrl);
-    await precacheImage(image, context);
+    try {
+      await precacheImage(image, context);
+    } catch (_) {
+      // The image widget's errorBuilder remains the fallback.
+    }
   }
 
   @override
@@ -64,16 +88,7 @@ class _MyNetworkImageState extends State<MyNetworkImage> {
             if (loadingProgress == null) {
               return child;
             }
-            return MyImage(
-              width: widget.width,
-              height: widget.height,
-              imagePath: ((widget.height ?? 0) > (widget.width ?? 0))
-                  ? "no_image_port.png"
-                  : "no_image_land.png",
-              fit: ((widget.height ?? 0) > (widget.width ?? 0))
-                  ? BoxFit.fitWidth
-                  : BoxFit.cover,
-            );
+            return _skeleton();
           },
           errorBuilder: (context, error, stackTrace) {
             return MyImage(
@@ -102,14 +117,7 @@ class _MyNetworkImageState extends State<MyNetworkImage> {
           ),
         ),
         placeholder: (context, url) {
-          return MyImage(
-            width: widget.width,
-            height: widget.height,
-            imagePath: ((widget.width ?? 0) > (widget.height ?? 0))
-                ? "no_image_land.png"
-                : "no_image_port.png",
-            fit: BoxFit.cover,
-          );
+          return _skeleton();
         },
         errorWidget: (context, url, error) {
           return MyImage(

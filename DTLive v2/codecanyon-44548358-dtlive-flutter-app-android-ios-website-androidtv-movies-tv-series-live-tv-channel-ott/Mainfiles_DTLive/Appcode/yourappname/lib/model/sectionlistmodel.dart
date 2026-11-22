@@ -19,6 +19,8 @@ class SectionListModel {
   int? totalPage;
   int? currentPage;
   bool? morePage;
+  String? nextCursor;
+  bool? hasMore;
 
   SectionListModel({
     this.status,
@@ -28,6 +30,8 @@ class SectionListModel {
     this.totalPage,
     this.currentPage,
     this.morePage,
+    this.nextCursor,
+    this.hasMore,
   });
 
   factory SectionListModel.fromJson(Map<String, dynamic> json) =>
@@ -43,6 +47,8 @@ class SectionListModel {
         totalPage: json["total_page"],
         currentPage: json["current_page"],
         morePage: json["more_page"],
+        nextCursor: json["next_cursor"],
+        hasMore: json["has_more"],
       );
 
   Map<String, dynamic> toJson() => {
@@ -55,6 +61,8 @@ class SectionListModel {
     "total_page": totalPage,
     "current_page": currentPage,
     "more_page": morePage,
+    "next_cursor": nextCursor,
+    "has_more": hasMore,
   };
 }
 

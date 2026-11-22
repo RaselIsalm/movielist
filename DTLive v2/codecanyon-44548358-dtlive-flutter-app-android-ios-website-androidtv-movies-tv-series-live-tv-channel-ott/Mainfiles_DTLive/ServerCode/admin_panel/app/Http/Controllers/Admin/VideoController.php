@@ -364,6 +364,7 @@ class VideoController extends Controller
                     'Bucket' => $bucket,
                     'Key' => $this->folder_content . '/' . $videoFilename,
                     'ContentType' => 'video/mp4',
+                    'CacheControl' => 'public, max-age=31536000, immutable',
                 ]);
                 $upload['video_filename'] = $videoFilename;
                 $upload['poster_filename'] = 'vid_' . date('Y_m_d_') . $uploadId . '.jpg';
@@ -635,7 +636,9 @@ class VideoController extends Controller
             }
             try {
                 if (!Storage::disk('s3')->put($this->folder_content . '/' . $posterFilename, $stream, [
+                    'visibility' => 'public',
                     'ContentType' => 'image/jpeg',
+                    'CacheControl' => 'public, max-age=31536000, immutable',
                 ])) {
                     throw new Exception('Unable to store the preview image in R2.');
                 }

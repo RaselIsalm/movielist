@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:percent_indicator/linear_percent_indicator.dart';
 import 'package:provider/provider.dart';
 import 'package:scrollview_observer/scrollview_observer.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 
 import '../model/playermodel.dart';
 import '../pages/sectionviewall.dart';
@@ -70,6 +71,7 @@ class HomeState extends State<Home> {
     if (nestedScrollController.offset >=
             nestedScrollController.position.maxScrollExtent &&
         !nestedScrollController.position.outOfRange &&
+        !sectionDataProvider.loadMore &&
         (sectionDataProvider.isMorePage ?? false)) {
       sectionDataProvider.setLoadMore(true);
       _fetchSectionData(sectionDataProvider.currentPage ?? 0);
@@ -77,7 +79,7 @@ class HomeState extends State<Home> {
   }
 
   Future<void> _fetchSectionData(int? nextPage) async {
-    printLog("_fetchSectionData nextPage  ========> $nextPage");
+    printLog("_fetchSectionData cursor page  ========> $nextPage");
     printLog(
       "_fetchSectionData isMorePage  ======> ${sectionDataProvider.isMorePage}",
     );
@@ -88,7 +90,7 @@ class HomeState extends State<Home> {
       "_fetchSectionData totalPage   ======> ${sectionDataProvider.totalPage}",
     );
 
-    await sectionDataProvider.getSectionList(
+    await sectionDataProvider.getFeedSections(
       (homeProvider.selectedIndex == -1)
           ? 0
           : (homeProvider
@@ -97,7 +99,6 @@ class HomeState extends State<Home> {
                     .id ??
                 0),
       (homeProvider.selectedIndex == -1) ? "1" : "2",
-      (nextPage ?? 0) + 1,
     );
     printLog(
       "sectionList length ==> ${sectionDataProvider.sectionList?.length}",
@@ -210,8 +211,6 @@ class HomeState extends State<Home> {
   ) async {
     printLog("getTabData position ====> $position");
     try {
-      await sectionDataProvider.clearOldData();
-      sectionDataProvider.setLoading(true);
       await bottombarProvider.toggleVisibility(true);
 
       if (nestedScrollController.hasClients) {
@@ -234,7 +233,7 @@ class HomeState extends State<Home> {
       // parallel API calls
       await Future.wait([
         sectionDataProvider.getSectionBanner(tabId, type),
-        sectionDataProvider.getSectionList(tabId, type, 1),
+        sectionDataProvider.getFeedSections(tabId, type, refresh: true),
       ]);
     } on Exception catch (e) {
       printLog("getTabData Error :====>  $e");
@@ -695,7 +694,8 @@ class HomeState extends State<Home> {
   }
 
   Widget _buildPageUI() {
-    if (homeProvider.loading) {
+    if (homeProvider.loading &&
+        (homeProvider.sectionTypeModel.result?.isEmpty ?? true)) {
       return ShimmerUtils.buildHomeMobileShimmer(context);
     } else {
       if (homeProvider.sectionTypeModel.status == 200) {
@@ -1335,121 +1335,111 @@ class HomeState extends State<Home> {
       padding: const EdgeInsets.fromLTRB(0, 15, 0, 0),
       physics: const NeverScrollableScrollPhysics(),
       itemBuilder: (BuildContext context, int index) {
-        if (sectionList?[index].data != null &&
-            (sectionList?[index].data?.length ?? 0) > 0) {
-          if (sectionList?[index].videoType == Constant.continueWatchType &&
-              continueWatchingStatus != null &&
-              continueWatchingStatus != "1") {
-            return const SizedBox.shrink();
-          }
-
-          /* AI Recommendation Section */
-          if ((sectionList?[index].sectionType ?? 0) ==
-              Constant.aiContentType) {
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 25),
-              child: AISectionWidget(
-                section: sectionList![index],
-                onItemTap: (datum, _) {
-                  openDetailPage(
-                    datum.id ?? 0,
-                    datum.subVideoType ?? 0,
-                    datum.videoType ?? 0,
-                    datum.typeId ?? 0,
-                  );
-                },
-                onViewAllTap: () async {
-                  final sectionViewAllProvider =
-                      Provider.of<SectionViewAllProvider>(
-                        context,
-                        listen: false,
-                      );
-                  if ((sectionList[index].viewAll ?? 0) == 1) {
-                    sectionViewAllProvider.setLoading(true);
-                    if (!context.mounted) return;
-                    await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => SectionViewAll(
-                          appBarTitle: sectionList[index].title ?? "",
-                          screenLayout: sectionList[index].screenLayout ?? "",
-                          sectionId: sectionList[index].id ?? 0,
-                          videoType: sectionList[index].videoType ?? 0,
-                        ),
-                      ),
-                    );
-                  }
-                },
-              ),
-            );
-          }
-          /* ───────────────────────── */
-
-          return Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildTitleViewAll(
-                sectionList: sectionList,
-                index: index,
-                onViewAllClick: () async {
-                  printLog("viewAll ====> ${sectionList?[index].viewAll}");
-                  final sectionViewAllProvider =
-                      Provider.of<SectionViewAllProvider>(
-                        context,
-                        listen: false,
-                      );
-                  if ((sectionList?[index].viewAll ?? 0) == 1) {
-                    sectionViewAllProvider.setLoading(true);
-                    if (!context.mounted) return;
-                    await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) {
-                          return SectionViewAll(
-                            sectionId: sectionList?[index].id ?? 0,
-                            appBarTitle: sectionList?[index].title ?? "",
-                            screenLayout:
-                                sectionList?[index].screenLayout ?? "",
-                            videoType: sectionList?[index].videoType ?? 0,
-                          );
-                        },
-                      ),
-                    );
-                  }
-                },
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: MediaQuery.of(context).size.width,
-                height: getRemainingDataHeight(
-                  sectionList?[index].videoType.toString() ?? "",
-                  sectionList?[index].screenLayout ?? "",
-                  sectionList,
-                  index,
-                ),
-                child: setSectionData(sectionList: sectionList, index: index),
-              ),
-              const SizedBox(height: 25),
-            ],
-          );
-        } else {
-          if ((sectionDataProvider.sectionBannerModel.result == null ||
-                  (sectionDataProvider.sectionBannerModel.result?.length ??
-                          0) ==
-                      0) &&
-              (sectionDataProvider.sectionList != null &&
-                  (sectionDataProvider.sectionList?.length ?? 0) == 1) &&
-              !sectionDataProvider.loadingBanner &&
-              !sectionDataProvider.loadingSection) {
-            return const Center(
-              child: NoData(title: 'no_data', subTitle: 'no_video_show'),
-            );
-          } else {
-            return const SizedBox.shrink();
-          }
-        }
+        final item = sectionList![index];
+        return VisibilityDetector(
+          key: ValueKey('feed-section-${item.id ?? index}'),
+          onVisibilityChanged: (info) {
+            if (info.visibleFraction > 0 &&
+                !sectionDataProvider.hasLoadedFeedSection(item.id ?? 0) &&
+                !sectionDataProvider.isLoadingFeedSection(item.id ?? 0)) {
+              unawaited(sectionDataProvider.getFeedSectionItems(item));
+            }
+          },
+          child: _buildFeedSectionItem(sectionList, index),
+        );
       },
+    );
+  }
+
+  Widget _buildFeedSectionItem(List<list.Result> sectionList, int index) {
+    final item = sectionList[index];
+    final hasData = item.data != null && item.data!.isNotEmpty;
+    if (!hasData) {
+      return SizedBox(
+        height: getRemainingDataHeight(
+          item.videoType?.toString() ?? '',
+          item.screenLayout ?? '',
+          sectionList,
+          index,
+        ),
+        child: ShimmerUtils.setHomeSections(context, item.screenLayout ?? 'landscape'),
+      );
+    }
+    if (item.videoType == Constant.continueWatchType &&
+        continueWatchingStatus != null && continueWatchingStatus != '1') {
+      return const SizedBox.shrink();
+    }
+    if (item.sectionType == Constant.aiContentType) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 25),
+        child: AISectionWidget(
+          section: item,
+          onItemTap: (datum, _) => openDetailPage(
+            datum.id ?? 0,
+            datum.subVideoType ?? 0,
+            datum.videoType ?? 0,
+            datum.typeId ?? 0,
+          ),
+          onViewAllTap: () async {
+            final sectionViewAllProvider = Provider.of<SectionViewAllProvider>(context, listen: false);
+            if (item.viewAll == 1) {
+              sectionViewAllProvider.setLoading(true);
+              if (!context.mounted) return;
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => SectionViewAll(
+                    appBarTitle: item.title ?? '',
+                    screenLayout: item.screenLayout ?? '',
+                    sectionId: item.id ?? 0,
+                    videoType: item.videoType ?? 0,
+                  ),
+                ),
+              );
+            }
+          },
+        ),
+      );
+    }
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildTitleViewAll(
+          sectionList: sectionList,
+          index: index,
+          onViewAllClick: () async {
+            final sectionViewAllProvider = Provider.of<SectionViewAllProvider>(context, listen: false);
+            if (item.viewAll == 1) {
+              sectionViewAllProvider.setLoading(true);
+              if (!context.mounted) return;
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => SectionViewAll(
+                    sectionId: item.id ?? 0,
+                    appBarTitle: item.title ?? '',
+                    screenLayout: item.screenLayout ?? '',
+                    videoType: item.videoType ?? 0,
+                  ),
+                ),
+              );
+            }
+          },
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: MediaQuery.of(context).size.width,
+          height: getRemainingDataHeight(
+            item.videoType?.toString() ?? '',
+            item.screenLayout ?? '',
+            sectionList,
+            index,
+          ),
+          child: setSectionData(sectionList: sectionList, index: index),
+        ),
+        const SizedBox(height: 25),
+      ],
     );
   }
 

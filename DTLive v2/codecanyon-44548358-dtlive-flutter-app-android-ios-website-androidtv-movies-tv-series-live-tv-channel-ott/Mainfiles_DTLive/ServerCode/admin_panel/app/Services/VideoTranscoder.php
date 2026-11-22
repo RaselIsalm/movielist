@@ -188,4 +188,28 @@ class VideoTranscoder
             throw new \RuntimeException(trim($process->getErrorOutput()) ?: 'Unable to create a video preview with ffmpeg.');
         }
     }
+
+    /** Repack an uploaded MP4 so the moov atom is available in the first range. */
+    public function ensureFastStart(string $sourcePath, string $outputPath): void
+    {
+        $process = new Process([
+            (string) config('video.transcoding.ffmpeg', 'ffmpeg'),
+            '-nostdin',
+            '-hide_banner',
+            '-loglevel', 'error',
+            '-y',
+            '-i', $sourcePath,
+            '-map', '0:v:0',
+            '-map', '0:a?',
+            '-c', 'copy',
+            '-movflags', '+faststart',
+            $outputPath,
+        ]);
+        $process->setTimeout((int) config('video.transcoding.timeout', 900));
+        $process->run();
+        if (!$process->isSuccessful() || !is_file($outputPath) || filesize($outputPath) < 1024) {
+            @unlink($outputPath);
+            throw new \RuntimeException(trim($process->getErrorOutput()) ?: 'Unable to prepare a fast-start MP4.');
+        }
+    }
 }

@@ -30,12 +30,23 @@ For automatic Laravel deployment, add a `DEPLOY_HOOK_URL` Actions secret contain
 Use the admin storage settings with the R2 access key, secret, bucket name,
 endpoint, and region `auto`. The endpoint is the S3 API endpoint, for example
 `https://<account-id>.r2.cloudflarestorage.com`; it is not a public media URL.
-Keep the R2 bucket private and leave `DTLIVE_MEDIA_PUBLIC_URL` empty to return
-same-origin range-streamed media URLs. Set `DTLIVE_MEDIA_PROXY=false` only when
-the bucket/custom domain is configured with browser CORS headers and you want
-direct short-lived signed URLs instead. If a Cloudflare custom media domain is
-configured, set that value as `DTLIVE_MEDIA_PUBLIC_URL` and configure its CORS
-policy for the web app origin.
+Configure a Cloudflare R2 custom media domain and set it as
+`DTLIVE_MEDIA_PUBLIC_URL`, then set `DTLIVE_MEDIA_PROXY=false`. Configure the
+custom domain to allow `GET`, `HEAD`, and `Range` requests from the web app
+origin and expose `Content-Range`, `Content-Length`, `Accept-Ranges`, and `ETag`.
+Objects written by the application use immutable cache headers and versioned
+names, so the browser and Cloudflare edge can reuse thumbnails and MP4 ranges.
+Keep the same-origin range endpoint available as a private-bucket fallback by
+leaving `DTLIVE_MEDIA_PUBLIC_URL` empty and setting `DTLIVE_MEDIA_PROXY=true`.
+
+After deploying the Laravel code, run the database migration and backfill the
+indexed taxonomy relations in the background. The backfill is chunked and can
+be resumed safely:
+
+```bash
+php artisan migrate --force
+php artisan feed:backfill-relations --chunk=1000
+```
 
 Bulk movie saves enqueue one background job per staged video. Keep the Laravel
 database queue worker running on the `media-video` queue so R2 transfers continue

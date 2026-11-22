@@ -45,6 +45,7 @@ import '../model/contentdetailmodel.dart' as contentdetails;
 import '../model/episodebyseasonmodel.dart' as episode;
 import '../model/clipepisodesmodel.dart' as shortsepisode;
 import '../model/sectionlistmodel.dart';
+import '../model/feeditemspagemodel.dart';
 import '../model/sectiontypemodel.dart';
 import '../model/reviewmodel.dart';
 import '../model/successmodel.dart';
@@ -706,6 +707,46 @@ class ApiService {
     );
     dataModel = SectionListModel.fromJson(response.data);
     return dataModel;
+  }
+
+  Future<SectionListModel> feedSections(
+    dynamic typeId,
+    dynamic isHomeScreen, {
+    String? cursor,
+    int limit = 10,
+  }) async {
+    final response = await dio.post(
+      'feed_sections',
+      options: optHeaders,
+      data: {
+        'user_id': Constant.userID ?? 0,
+        'type_id': typeId,
+        'is_home_screen': isHomeScreen,
+        'device_id': Constant.currentDeviceId,
+        'limit': limit,
+        if (cursor != null && cursor.isNotEmpty) 'cursor': cursor,
+      },
+    );
+    return SectionListModel.fromJson(response.data);
+  }
+
+  Future<FeedItemsPage> feedSectionItems(
+    dynamic sectionId, {
+    String? cursor,
+    int limit = 12,
+  }) async {
+    final response = await dio.post(
+      'feed_section_items',
+      options: optHeaders,
+      data: {
+        'user_id': Constant.userID ?? 0,
+        'device_id': Constant.currentDeviceId,
+        'section_id': sectionId,
+        'limit': limit,
+        if (cursor != null && cursor.isNotEmpty) 'cursor': cursor,
+      },
+    );
+    return FeedItemsPage.fromJson(response.data);
   }
 
   // section_detail API

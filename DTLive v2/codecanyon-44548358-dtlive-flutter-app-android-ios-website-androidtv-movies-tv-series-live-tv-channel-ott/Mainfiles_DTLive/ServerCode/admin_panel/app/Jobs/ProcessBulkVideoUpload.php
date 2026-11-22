@@ -100,7 +100,11 @@ class ProcessBulkVideoUpload implements ShouldQueue, ShouldBeUnique
                     throw new Exception('Unable to read the completed staged video.');
                 }
                 try {
-                    if (!$disk->put($targetPath, $stream)) {
+                    if (!$disk->put($targetPath, $stream, [
+                        'visibility' => 'public',
+                        'ContentType' => 'video/mp4',
+                        'CacheControl' => 'public, max-age=31536000, immutable',
+                    ])) {
                         throw new Exception('Unable to store the video in configured storage.');
                     }
                     $uploadedVideo = true;
@@ -109,6 +113,42 @@ class ProcessBulkVideoUpload implements ShouldQueue, ShouldBeUnique
                 }
             } elseif ($directR2 && !$disk->exists($targetPath)) {
                 throw new Exception('The completed R2 video object is missing.');
+            }
+
+            if ($directR2 && $diskName === 's3') {
+                // Browser multipart uploads arrive quickly, but their source
+                // may have the moov atom at the end. Repack once in the queue
+                // before publishing the catalog row, then overwrite the same
+                // immutable key with the range-friendly object.
+                $sourceTemp = tempnam(storage_path('app'), 'dtlive-r2-source-');
+                $fastStartTemp = tempnam(storage_path('app'), 'dtlive-r2-fast-');
+                if ($sourceTemp === false || $fastStartTemp === false) {
+                    throw new Exception('Unable to create temporary media files.');
+                }
+                try {
+                    $sourceStream = $disk->readStream($targetPath);
+                    if (!is_resource($sourceStream)) {
+                        throw new Exception('Unable to read the completed R2 video.');
+                    }
+                    $destination = fopen($sourceTemp, 'wb');
+                    stream_copy_to_stream($sourceStream, $destination);
+                    fclose($sourceStream);
+                    fclose($destination);
+                    app(VideoTranscoder::class)->ensureFastStart($sourceTemp, $fastStartTemp);
+                    $fastStream = fopen($fastStartTemp, 'rb');
+                    if ($fastStream === false || !$disk->put($targetPath, $fastStream, [
+                        'visibility' => 'public',
+                        'ContentType' => 'video/mp4',
+                        'CacheControl' => 'public, max-age=31536000, immutable',
+                    ])) {
+                        if (is_resource($fastStream)) fclose($fastStream);
+                        throw new Exception('Unable to publish the fast-start R2 video.');
+                    }
+                    fclose($fastStream);
+                } finally {
+                    @unlink($sourceTemp);
+                    @unlink($fastStartTemp);
+                }
             }
 
             $posterPath = $directory . DIRECTORY_SEPARATOR . $this->uploadId . '.poster.jpg';
@@ -138,7 +178,11 @@ class ProcessBulkVideoUpload implements ShouldQueue, ShouldBeUnique
                     throw new Exception('Unable to read the generated video preview.');
                 }
                 try {
-                    if (!$disk->put($posterTargetPath, $posterStream)) {
+                    if (!$disk->put($posterTargetPath, $posterStream, [
+                        'visibility' => 'public',
+                        'ContentType' => 'image/jpeg',
+                        'CacheControl' => 'public, max-age=31536000, immutable',
+                    ])) {
                         throw new Exception('Unable to store the video preview in configured storage.');
                     }
                     $uploadedPoster = true;
