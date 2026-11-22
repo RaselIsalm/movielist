@@ -24,6 +24,8 @@ const _cyan = colorPrimaryDark;
 const _purple = complimentryColor; // #792BEC
 const _red = colorAccent; // #EC2B4E
 const _orange = warningBG;
+const _splashTagline =
+    "My boyfriend's back from the army. Triple cumshot and I'm covered in cum. VIRTUAL SEX";
 
 const _kNavFadeMs = 500;
 
@@ -83,10 +85,6 @@ class _SplashState extends State<Splash> with TickerProviderStateMixin {
   late AnimationController _tagCtrl;
   late Animation<double> _tagOpacity;
   late Animation<Offset> _tagSlide;
-
-  // ── Subtitle (starts at 1900ms, 550ms duration) ───────────────────────
-  late AnimationController _subCtrl;
-  late Animation<double> _subOpacity;
 
   // ── Late elements: stripe + dots + bar (starts at 2000ms, 450ms) ──────
   late AnimationController _lateCtrl;
@@ -280,16 +278,6 @@ class _SplashState extends State<Splash> with TickerProviderStateMixin {
       end: Offset.zero,
     ).animate(CurvedAnimation(parent: _tagCtrl, curve: Curves.easeOutCubic));
 
-    // Subtitle
-    _subCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 550),
-    );
-    _subOpacity = Tween<double>(
-      begin: 0,
-      end: 1,
-    ).animate(CurvedAnimation(parent: _subCtrl, curve: Curves.easeOut));
-
     // Late elements
     _lateCtrl = AnimationController(
       vsync: this,
@@ -327,7 +315,6 @@ class _SplashState extends State<Splash> with TickerProviderStateMixin {
       _stripCtrl.repeat();
       _at(180, _sepCtrl.forward);
       _at(350, _tagCtrl.forward);
-      _at(550, _subCtrl.forward);
       _at(700, _lateCtrl.forward);
       _at(1200, () {
         _animDone = true;
@@ -367,9 +354,6 @@ class _SplashState extends State<Splash> with TickerProviderStateMixin {
 
     // 1 200 ms — tagline slides up
     _at(1200, _tagCtrl.forward);
-
-    // 1 900 ms — subtitle fades in
-    _at(1900, _subCtrl.forward);
 
     // 2 000 ms — stripe + dots + bar
     _at(2000, _lateCtrl.forward);
@@ -472,7 +456,6 @@ class _SplashState extends State<Splash> with TickerProviderStateMixin {
     _sepCtrl.dispose();
     _dotRingCtrl.dispose();
     _tagCtrl.dispose();
-    _subCtrl.dispose();
     _lateCtrl.dispose();
     _dotsCtrl.dispose();
     _waveCtrl.dispose();
@@ -508,7 +491,6 @@ class _SplashState extends State<Splash> with TickerProviderStateMixin {
           _sepCtrl,
           _dotRingCtrl,
           _tagCtrl,
-          _subCtrl,
           _lateCtrl,
           _dotsCtrl,
           _waveCtrl,
@@ -816,26 +798,6 @@ class _SplashState extends State<Splash> with TickerProviderStateMixin {
           ),
         ),
 
-        SizedBox(height: size.height * .018),
-
-        // ── Subtitle ───────────────────────────────────────────────
-        FadeTransition(
-          opacity: _subOpacity,
-          child: MyText(
-            text: 'Unlimited Entertainment Awaits',
-            color: titleTextColor.withValues(alpha: .36),
-            fontsizeNormal: 11,
-            fontsizeWeb: 12,
-            fontweight: FontWeight.w400,
-            letterSpacing: 3.0,
-            maxline: 1,
-            multilanguage: false,
-            overflow: TextOverflow.ellipsis,
-            textalign: TextAlign.center,
-            fontstyle: FontStyle.normal,
-          ),
-        ),
-
         SizedBox(height: size.height * .060),
 
         // ── Loading dots ───────────────────────────────────────────
@@ -846,48 +808,23 @@ class _SplashState extends State<Splash> with TickerProviderStateMixin {
 
   // ── Tagline ─────────────────────────────────────────────────────────────
   Widget _buildTagline(Size size) {
-    final fs = size.width * .062;
-    return Column(
-      children: [
-        _tagLine('Stream ', 'Everything.', fs),
-        _tagLine('Miss ', 'Nothing.', fs),
-      ],
+    return SizedBox(
+      width: size.width * .84,
+      child: MyText(
+        text: _splashTagline,
+        color: titleTextColor,
+        fontsizeNormal: 14,
+        fontsizeWeb: 20,
+        fontweight: FontWeight.w600,
+        letterSpacing: .1,
+        maxline: 4,
+        multilanguage: false,
+        overflow: TextOverflow.visible,
+        textalign: TextAlign.center,
+        fontstyle: FontStyle.normal,
+      ),
     );
   }
-
-  Widget _tagLine(String plain, String grad, double fontSize) => RichText(
-    textAlign: TextAlign.center,
-    text: TextSpan(
-      style: TextStyle(
-        fontSize: fontSize,
-        fontWeight: FontWeight.w700,
-        letterSpacing: -.3,
-        height: 1.22,
-      ),
-      children: [
-        TextSpan(
-          text: plain,
-          style: const TextStyle(color: white), // [TASK-1]
-        ),
-        WidgetSpan(
-          child: ShaderMask(
-            shaderCallback: (b) =>
-                const LinearGradient(colors: [_lime, _cyan]).createShader(b),
-            child: Text(
-              grad,
-              style: TextStyle(
-                fontSize: fontSize,
-                fontWeight: FontWeight.w700,
-                letterSpacing: -.3,
-                height: 1.22,
-                color: white, // [TASK-1]
-              ),
-            ),
-          ),
-        ),
-      ],
-    ),
-  );
 
   // ── Colour-cycling bounce dots ──────────────────────────────────────────
   Widget _buildDots() {

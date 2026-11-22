@@ -342,14 +342,17 @@ class LoginSocialState extends State<LoginSocial> {
       mProfileImg = await Utils.saveImageInStorage(user.photoUrl ?? "");
       printLog('_gmailLogin mProfileImg ===> $mProfileImg');
 
-      /* Continue directly after Google authorization. */
+      /* Hide overlay before showing referral dialog */
       LoadingOverlay().hide();
       if (!mounted) return;
+      final referralCode = await Utils.showReferralDialog(context);
+      if (!mounted) return;
       LoadingOverlay().show(context);
-      await checkAndNavigate(
+      checkAndNavigate(
         user.email,
         user.displayName ?? "",
         "2",
+        referenceCode: referralCode,
       );
     } on FirebaseAuthException catch (e) {
       printLog('_gmailLogin Firebase Error Code ==> ${e.code.toString()}');

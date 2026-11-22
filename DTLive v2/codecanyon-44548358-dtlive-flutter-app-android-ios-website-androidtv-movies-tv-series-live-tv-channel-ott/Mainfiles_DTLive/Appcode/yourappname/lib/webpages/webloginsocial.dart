@@ -473,8 +473,8 @@ class _WebLoginSocialState extends State<WebLoginSocial> {
           textalign: TextAlign.start,
           fontstyle: FontStyle.normal,
         ),
-        const SizedBox(height: 24),
         const SizedBox(height: 30),
+        const SizedBox(height: 12),
         InteractiveIcon(
           builder: (isHovered) {
             return InkWell(
@@ -530,11 +530,12 @@ class _WebLoginSocialState extends State<WebLoginSocial> {
   Future<void> _gmailLogin() async {
     try {
       LoadingOverlay().show(context);
-      // Persist the Firebase web session until the user explicitly logs out.
+      // Keep Firebase's local web session so a refresh does not sign the user
+      // out. The existing logout flow explicitly clears this session.
       if (kIsWeb) {
         await _auth.setPersistence(Persistence.LOCAL);
       }
-      final authProvider = GoogleAuthProvider();
+      GoogleAuthProvider authProvider = GoogleAuthProvider();
       authProvider.addScope('email');
       authProvider.addScope('profile');
       final userCredential = await _auth.signInWithPopup(authProvider);
@@ -548,19 +549,24 @@ class _WebLoginSocialState extends State<WebLoginSocial> {
         "_gmailLogin UserName ======> ${userCredential.user?.displayName}",
       );
       printLog("_gmailLogin UserEmail =====> ${userCredential.user?.email}");
-      printLog('_gmailLogin firebasedid ===> ${userCredential.user?.uid ?? ""}');
+      String firebasedid = userCredential.user?.uid ?? "";
+      printLog('_gmailLogin firebasedid ===> $firebasedid');
 
+      /* Hide overlay before showing referral dialog */
       LoadingOverlay().hide();
+      if (!mounted) return;
+      final referralCode = await Utils.showReferralDialog(context);
       if (!mounted) return;
       LoadingOverlay().show(context);
       await checkAndNavigate(
         userCredential.user?.email ?? "",
         userCredential.user?.displayName ?? "",
         "2",
+        referenceCode: referralCode,
       );
     } on FirebaseAuthException catch (e) {
-      printLog('_gmailLogin Firebase Error Code ==> ${e.code}');
-      printLog('_gmailLogin Firebase Error =======> ${e.message}');
+      printLog('_gmailLogin Firebase Error Code ==> ${e.code.toString()}');
+      printLog('_gmailLogin Firebase Error =======> ${e.message.toString()}');
       if (!mounted) return;
       LoadingOverlay().hide();
       Utils.showToast(e.message ?? "Google sign-in failed. Please try again.");

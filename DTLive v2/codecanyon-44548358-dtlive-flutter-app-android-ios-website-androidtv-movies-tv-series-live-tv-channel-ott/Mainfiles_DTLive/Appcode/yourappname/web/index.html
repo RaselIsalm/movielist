@@ -274,16 +274,6 @@
       }
     }
 
-    @keyframes subFade {
-      from {
-        opacity: 0
-      }
-
-      to {
-        opacity: 1
-      }
-    }
-
     /* Brand stripe */
     @keyframes stripeIn {
       from {
@@ -662,31 +652,12 @@
 
     .sp-tag-line {
       display: block;
-      font-size: clamp(20px, 4.8vmin, 46px);
-      font-weight: 700;
-      letter-spacing: -.3px;
-      line-height: 1.22;
+      max-width: min(90vw, 680px);
+      font-size: clamp(13px, 2.4vmin, 24px);
+      font-weight: 600;
+      letter-spacing: 0;
+      line-height: 1.35;
       color: #fff;
-    }
-
-    /* "Everything." and "Nothing." get the lime→cyan gradient */
-    .sp-grad {
-      background: linear-gradient(90deg, #BAFA34, #00E5FF);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-
-    #sp-sub {
-      display: block;
-      margin-top: clamp(8px, 1.8vmin, 16px);
-      font-size: clamp(9px, 1.8vmin, 13px);
-      font-weight: 400;
-      letter-spacing: clamp(2.5px, .6vmin, 4px);
-      color: rgba(255, 255, 255, .36);
-      text-transform: uppercase;
-      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-      animation: subFade 500ms ease 1.96s both;
     }
 
     /* ══════════════════════════════════════════════
@@ -792,7 +763,7 @@
       <div id="sp-logo-area">
         <div id="sp-shadow"></div>
         <div id="sp-icon-wrap">
-          <img src="assets/appicon.png" alt="DTLive Studio" width="280" height="90">
+          <img src="assets/appicon.png" alt="Jinkviral" width="280" height="90">
         </div>
       </div>
 
@@ -806,9 +777,7 @@
       </div>
 
       <div id="sp-tag">
-        <span class="sp-tag-line">Stream <span class="sp-grad">Everything.</span></span>
-        <span class="sp-tag-line">Miss <span class="sp-grad">Nothing.</span></span>
-        <span id="sp-sub">Unlimited Entertainment Awaits</span>
+        <span class="sp-tag-line">My boyfriend's back from the army. Triple cumshot and I'm covered in cum. VIRTUAL SEX</span>
       </div>
 
       <div id="sp-dots">
@@ -890,7 +859,6 @@
       var area = document.getElementById('sp-logo-area');
       var sep = document.getElementById('sp-sep');
       var tag = document.getElementById('sp-tag');
-      var sub = document.getElementById('sp-sub');
       var dots = document.getElementById('sp-dots');
       var bar = document.getElementById('sp-bar');
       var ver = document.getElementById('sp-ver');
@@ -957,11 +925,6 @@
       setTimeout(function () {
         tag.classList.add('go');
       }, 1380);
-
-      /* ── 1900ms: subtitle ───────────────────────────────────────── */
-      setTimeout(function () {
-        sub.classList.add('go');
-      }, 1900);
 
       /* ── 1950ms: brand stripe ───────────────────────────────────── */
       setTimeout(function () {
