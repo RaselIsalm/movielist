@@ -793,13 +793,32 @@ class VideoController extends Controller
     /** Read staged upload state even when the browser's session cookie changed. */
     private function readBulkUpload($uploadId)
     {
-        $path = $this->bulkUploadMetadataPath($uploadId);
-        if (!is_file($path)) {
+        $metadataPath = $this->bulkUploadMetadataPath($uploadId);
+        if (is_file($metadataPath)) {
+            $decoded = json_decode((string) file_get_contents($metadataPath), true);
+            if (is_array($decoded)) {
+                return $decoded;
+            }
+        }
+
+        // Older uploads were staged before the sidecar receipt was added.
+        // Recover their authoritative state from the completed MP4 so a
+        // session race or a deploy cannot strand videos that already arrived.
+        $directory = $this->bulkUploadDirectory($uploadId);
+        $videoPath = $directory . DIRECTORY_SEPARATOR . $uploadId . '.mp4';
+        $size = is_file($videoPath) ? filesize($videoPath) : false;
+        if ($size === false || $size < 8) {
             return null;
         }
 
-        $decoded = json_decode((string) file_get_contents($path), true);
-        return is_array($decoded) ? $decoded : null;
+        return [
+            'name' => $uploadId . '.mp4',
+            'size' => (int) $size,
+            'chunk_count' => (int) ceil($size / (1024 * 1024)),
+            'complete' => true,
+            'poster_complete' => is_file($directory . DIRECTORY_SEPARATOR . $uploadId . '.poster.jpg'),
+            'created_at' => is_dir($directory) && filemtime($directory) ? filemtime($directory) : time(),
+        ];
     }
 
     /** Persist an upload receipt atomically beside its chunks. */

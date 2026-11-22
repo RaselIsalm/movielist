@@ -144,6 +144,18 @@ class AdminBulkVideoUploadTest extends TestCase
         $this->assertSame(1, Video::count());
     }
 
+    public function test_it_recovers_a_completed_stage_created_without_a_receipt(): void
+    {
+        $uploadId = $this->uploadMp4('legacy-stage.mp4', $this->validMp4('legacy staged video'));
+        @unlink(storage_path('app/bulk-video-staging/17/' . $uploadId . '/meta.json'));
+        session()->forget('bulk_video_uploads');
+
+        $this->postJson(route('admin.video.bulk.save'), $this->batchPayload([$uploadId]))
+            ->assertOk()
+            ->assertJson(['status' => 200, 'count' => 1]);
+        $this->assertSame(1, Video::count());
+    }
+
     public function test_it_uses_the_configured_s3_storage_disk(): void
     {
         Storage::fake('s3');
