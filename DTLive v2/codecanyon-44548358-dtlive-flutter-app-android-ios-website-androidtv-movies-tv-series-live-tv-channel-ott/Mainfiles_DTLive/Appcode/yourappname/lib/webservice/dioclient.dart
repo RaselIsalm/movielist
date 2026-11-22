@@ -16,8 +16,11 @@ class DioClient {
     dio = Dio(
       BaseOptions(
         baseUrl: Constant.baseUrl,
-        connectTimeout: const Duration(seconds: 5),
-        receiveTimeout: const Duration(seconds: 8),
+        // The home feed can fan out to R2-backed media URLs on a cold edge.
+        // Keep transient latency from being interpreted as an empty catalog;
+        // the providers retain their last successful data while retrying.
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 30),
         headers: {
           HttpHeaders.contentTypeHeader: 'application/json',
         },

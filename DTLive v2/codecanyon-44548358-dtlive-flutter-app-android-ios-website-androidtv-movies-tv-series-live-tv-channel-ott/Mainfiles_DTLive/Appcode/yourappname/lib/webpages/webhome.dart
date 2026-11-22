@@ -153,7 +153,8 @@ class WebHomeState extends State<WebHome> {
     int position,
     List<type.Result>? sectionTypeList,
   ) async {
-    await sectionDataProvider.clearOldData();
+    // Keep the last successful catalog visible while the next request runs.
+    // Clearing here made a transient API/R2 timeout look like an empty home page.
     sectionDataProvider.setLoading(true);
     final isDefaultTab = position == -1;
     final tabId = isDefaultTab
@@ -403,7 +404,8 @@ class WebHomeState extends State<WebHome> {
                 fontstyle: FontStyle.normal,
               ),
             ),
-          if (sectionDataProvider.loadingBanner)
+          if (sectionDataProvider.loadingBanner &&
+              (sectionDataProvider.sectionBannerModel.result?.isEmpty ?? true))
             if (Dimens.isBigScreen(context))
               ShimmerUtils.bannerWeb(context)
             else
@@ -431,7 +433,8 @@ class WebHomeState extends State<WebHome> {
 
           /* Continue Watching & Remaining Sections */
           if (sectionDataProvider.loadingSection &&
-              !sectionDataProvider.loadMore)
+              !sectionDataProvider.loadMore &&
+              (sectionDataProvider.sectionList?.isEmpty ?? true))
             sectionShimmer()
           else if (sectionDataProvider.sectionList != null &&
               (sectionDataProvider.sectionList?.length ?? 0) > 0)

@@ -27,13 +27,18 @@ class SectionDataProvider extends ChangeNotifier {
   bool feedRefreshing = false;
 
   Future<void> getSectionBanner(dynamic typeId, isHomePage) async {
+    final previousBanner = sectionBannerModel;
     cBannerIndex = 0;
     printLog("getSectionBanner typeId :==> $typeId");
     printLog("getSectionBanner isHomePage :==> $isHomePage");
     loadingBanner = true;
-    sectionBannerModel = SectionBannerModel();
     try {
-      sectionBannerModel = await ApiService().sectionBanner(typeId, isHomePage);
+      final fetchedBanner =
+          await ApiService().sectionBanner(typeId, isHomePage);
+      if (fetchedBanner.status == 200 ||
+          (previousBanner.result?.isEmpty ?? true)) {
+        sectionBannerModel = fetchedBanner;
+      }
       printLog("getSectionBanner message :==> ${sectionBannerModel.message}");
     } on Exception catch (e) {
       printLog("getSectionBanner Exception :==> $e");
@@ -78,21 +83,23 @@ class SectionDataProvider extends ChangeNotifier {
   }
 
   Future<void> getSectionList(dynamic typeId, isHomePage, pageNo) async {
+    final previousSections =
+        List<section.Result>.from(sectionList ?? <section.Result>[]);
+    final previousModel = sectionListModel;
     printLog("getSectionList typeId :======> $typeId");
     printLog("getSectionList isHomePage :==> $isHomePage");
     printLog("getSectionList pageNo :======> $pageNo");
-    if (pageNo == 1) {
-      sectionList?.clear();
-      sectionList = [];
-    }
     loadingSection = true;
     printLog("getSectionList length :======> ${sectionList?.length}");
-    sectionListModel = section.SectionListModel();
     try {
       sectionListModel =
           await ApiService().sectionList(typeId, isHomePage, pageNo);
     } on Exception catch (e) {
       printLog("getSectionList Exception :==> $e");
+      sectionListModel = previousModel;
+      if (previousSections.isNotEmpty) {
+        sectionList = previousSections;
+      }
       setLoadMore(false);
       loadingSection = false;
       loadMore = false;
@@ -103,7 +110,6 @@ class SectionDataProvider extends ChangeNotifier {
     printLog(
         "sectionListModel length :=1=> ${(sectionListModel.result?.length ?? 0)}");
     if (pageNo == 1) {
-      sectionList?.clear();
       sectionList = [];
     }
     if (sectionListModel.status == 200) {
@@ -131,6 +137,10 @@ class SectionDataProvider extends ChangeNotifier {
         setLoadMore(false);
       }
     } else {
+      sectionListModel = previousModel;
+      if (previousSections.isNotEmpty) {
+        sectionList = previousSections;
+      }
       setLoadMore(false);
     }
     loadingSection = false;
