@@ -18,3 +18,13 @@
     # Redirect everything else (dynamic URLs) to Flutter's index.html
     RewriteRule ^.*$ index.html [L]
 </IfModule>
+
+# Flutter's entrypoint and service worker must be revalidated after each
+# deployment so browsers and the CDN do not keep loading an older app bundle.
+<IfModule mod_headers.c>
+    <FilesMatch "^(index\.html|flutter_bootstrap.*\.js|flutter_service_worker\.js|main.*\.js)$">
+        Header always set Cache-Control "no-store, no-cache, must-revalidate, max-age=0"
+        Header always set Pragma "no-cache"
+        Header always set Expires "0"
+    </FilesMatch>
+</IfModule>
