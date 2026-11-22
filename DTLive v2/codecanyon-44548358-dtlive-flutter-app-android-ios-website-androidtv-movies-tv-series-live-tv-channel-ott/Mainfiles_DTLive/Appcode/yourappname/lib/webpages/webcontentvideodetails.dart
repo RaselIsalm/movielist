@@ -37,6 +37,7 @@ import '../widget/mytext.dart';
 import '../utils/utils.dart';
 import '../widget/mynetworkimg.dart';
 import '../widget/ratingreview.dart';
+import '../ads/adsterra_ad.dart';
 
 class WebContentVideoDetails extends StatefulWidget {
   final String? newPage, oldPage;
@@ -1552,6 +1553,13 @@ class WebContentVideoDetailsState extends State<WebContentVideoDetails>
           if (widget.videoType != Constant.upcomingContentType)
             _buildRentExpiryTAG(),
           _buildStatsRow(item),
+          if (kIsWeb)
+            AdsterraAd(
+              unit: Dimens.isBigScreen(context)
+                  ? AdsterraUnit.banner300x250
+                  : AdsterraUnit.banner320x50,
+              margin: const EdgeInsets.symmetric(vertical: 16),
+            ),
           Consumer<VideoDetailsProvider>(
             builder: (context, vdp, child) {
               return Column(

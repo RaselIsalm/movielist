@@ -40,6 +40,7 @@ import '../widget/ai_section_widget.dart';
 import '../widget/content_section_widget.dart';
 import '../widget/genre_language_section_widget.dart';
 import '../widget/shorts_section_widget.dart';
+import '../ads/adsterra_ad.dart';
 
 class WebHome extends StatefulWidget {
   final String? newPage, oldPage;
@@ -415,6 +416,13 @@ class WebHomeState extends State<WebHome> {
               _mobileHomeBanner(sectionDataProvider.sectionBannerModel.result)
           else
             SizedBox(height: Dimens.homeTabHeight),
+
+          /* Adsterra Native Banner: below the hero area, before the content feed. */
+          if (kIsWeb)
+            const AdsterraAd(
+              unit: AdsterraUnit.nativeBanner,
+              margin: EdgeInsets.symmetric(vertical: 12),
+            ),
 
           /* Continue Watching & Remaining Sections */
           if (sectionDataProvider.loadingSection &&

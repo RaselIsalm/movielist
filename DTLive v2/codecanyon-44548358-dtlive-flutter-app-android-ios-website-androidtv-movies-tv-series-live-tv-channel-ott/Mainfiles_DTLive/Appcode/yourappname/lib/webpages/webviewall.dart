@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../ads/adsterra_ad.dart';
 import '../provider/showdetailsprovider.dart';
 import '../provider/videodetailsprovider.dart';
 import '../provider/viewallprovider.dart';
@@ -115,6 +116,10 @@ class WebViewAllState extends State<WebViewAll> {
         SizedBox(height: Dimens.homeTabHeight),
         _buildAppbar(),
         _setContentByType(),
+        const AdsterraAd(
+          unit: AdsterraUnit.banner320x50,
+          margin: EdgeInsets.symmetric(vertical: 16),
+        ),
 
         /* Pagination loader */
         Consumer<ViewAllProvider>(

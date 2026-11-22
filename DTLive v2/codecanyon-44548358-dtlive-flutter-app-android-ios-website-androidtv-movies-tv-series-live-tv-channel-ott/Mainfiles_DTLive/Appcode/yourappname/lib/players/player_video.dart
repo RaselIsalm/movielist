@@ -31,6 +31,7 @@ import '../widget/myimage.dart';
 import '../widget/mynetworkimg.dart';
 import '../widget/mytext.dart';
 import '../model/playermodel.dart';
+import '../ads/adsterra_ad.dart';
 import 'model/optionitem.dart';
 import 'model/subtitlemodel.dart';
 import 'model/subtitlemodel.dart' as mysubtitle;
@@ -1538,34 +1539,66 @@ class _PlayerVideoState extends State<PlayerVideo>
                       },
                 child: Scaffold(
                   backgroundColor: black, // [IMP-4]
-                  body: Consumer<PlayerProvider>(
-                    builder: (context, playerProvider, child) {
-                      return Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          // Always renders player/loading — fills full screen
-                          _setBuildPlayer(),
-
-                          // Ad container overlaid on top
-                          if (_shouldShowAds() && _adDisplayContainer != null)
-                            Visibility(
-                              visible: _isAdActuallyPlaying,
-                              maintainState: true,
-                              child: _adDisplayContainer!,
-                            ),
-
-                          // [NEW] FEATURE-2: Lock screen overlay — absorbs all input when locked
-                          if (_isScreenLocked) _buildLockOverlay(),
-                        ],
-                      );
-                    },
-                  ),
+                  body: kIsWeb
+                      ? LayoutBuilder(
+                          builder: (context, constraints) {
+                            if (constraints.maxWidth >= 700) {
+                              return _buildPlayerSurface();
+                            }
+                            return SingleChildScrollView(
+                              child: Column(
+                                children: [
+                                  SizedBox(
+                                    width: constraints.maxWidth,
+                                    child: AspectRatio(
+                                      aspectRatio: 16 / 9,
+                                      child: _buildPlayerSurface(),
+                                    ),
+                                  ),
+                                  const AdsterraAd(
+                                    unit: AdsterraUnit.banner320x50,
+                                    margin: EdgeInsets.only(
+                                      top: 12,
+                                      bottom: 16,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        )
+                      : _buildPlayerSurface(),
                 ),
               ),
             ),
           ), // [WEB-2] Focus close
         ),
       ),
+    );
+  }
+
+  Widget _buildPlayerSurface() {
+    return Consumer<PlayerProvider>(
+      builder: (context, playerProvider, child) {
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            // Always renders player/loading — fills the player surface.
+            _setBuildPlayer(),
+
+            // IMA ad container remains overlaid only during a native IMA break.
+            if (_shouldShowAds() && _adDisplayContainer != null)
+              Visibility(
+                visible: _isAdActuallyPlaying,
+                maintainState: true,
+                child: _adDisplayContainer!,
+              ),
+
+            // Lock screen overlay — absorbs all input when locked.
+            if (_isScreenLocked) _buildLockOverlay(),
+          ],
+        );
+      },
     );
   }
 

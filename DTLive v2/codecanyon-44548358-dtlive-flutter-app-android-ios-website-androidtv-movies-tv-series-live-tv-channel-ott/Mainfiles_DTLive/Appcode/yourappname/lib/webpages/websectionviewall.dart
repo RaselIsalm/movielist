@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
+import '../ads/adsterra_ad.dart';
 import '../provider/sectionviewallprovider.dart';
 import '../provider/videobyidprovider.dart';
 import '../routes/routes_constant.dart';
@@ -214,6 +215,10 @@ class WebSectionViewAllState extends State<WebSectionViewAll> {
                 _buildChannelItem()
               else
                 _buildVideoItem(),
+              const AdsterraAd(
+                unit: AdsterraUnit.nativeBanner,
+                margin: EdgeInsets.symmetric(vertical: 16),
+              ),
               /* Pagination loader */
               if (sectionViewAllProvider.loadMore)
                 ShimmerUtils.responsiveGrid(

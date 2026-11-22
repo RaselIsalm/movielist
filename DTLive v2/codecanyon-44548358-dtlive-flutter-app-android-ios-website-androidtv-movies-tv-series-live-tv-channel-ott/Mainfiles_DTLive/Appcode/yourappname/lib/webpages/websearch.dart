@@ -2,6 +2,7 @@ import 'package:flutter_locales/flutter_locales.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../ads/adsterra_ad.dart';
 import '../provider/findprovider.dart';
 import '../routes/routes_constant.dart';
 import '../shimmer/shimmerutils.dart';
@@ -110,6 +111,10 @@ class WebSearchState extends State<WebSearch> {
           ),
         ),
         _buildSearchData(),
+        const AdsterraAd(
+          unit: AdsterraUnit.banner320x50,
+          margin: EdgeInsets.symmetric(vertical: 16),
+        ),
       ],
     );
   }

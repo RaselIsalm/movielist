@@ -37,6 +37,7 @@ import '../utils/utils.dart';
 import '../widget/mynetworkimg.dart';
 import '../widget/ratingreview.dart';
 import '../widget/relatedvideoshow.dart';
+import '../ads/adsterra_ad.dart';
 
 class WebContentShowDetails extends StatefulWidget {
   final String? newPage, oldPage;
@@ -1665,6 +1666,13 @@ class WebContentShowDetailsState extends State<WebContentShowDetails>
           if (widget.videoType != Constant.upcomingContentType)
             _buildRentExpiryTAG(),
           _buildStatsRow(item),
+          if (kIsWeb)
+            AdsterraAd(
+              unit: Dimens.isBigScreen(context)
+                  ? AdsterraUnit.banner300x250
+                  : AdsterraUnit.banner320x50,
+              margin: const EdgeInsets.symmetric(vertical: 16),
+            ),
           const SizedBox(height: 32),
           _buildEpisodesSection(),
           Consumer<ShowDetailsProvider>(
