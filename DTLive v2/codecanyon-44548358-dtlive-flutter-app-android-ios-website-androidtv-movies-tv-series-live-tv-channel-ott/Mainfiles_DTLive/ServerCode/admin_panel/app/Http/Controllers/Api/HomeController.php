@@ -89,7 +89,7 @@ class HomeController extends Controller
                     $value['value'] = $this->common->getImage($this->folder_app, $value['value'], 'normal', $storage_type['value']);
                 }
                 if ($value['key'] == 'powered_by_image') {
-                    $value['value'] = $this->common->getImage($this->folder_app, $value['value'], 'normal', 1);
+                    $value['value'] = $this->common->getImage($this->folder_app, $value['value'], 'normal', (int) ($storage_type['value'] ?? Storage_Type()));
                 }
             }
 

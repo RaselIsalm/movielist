@@ -24,12 +24,13 @@ class PanelSettingController extends Controller
             $result = Setting_Data();
             if (isset($result)) {
 
-                $result['panel_login_page_img'] = $this->common->getImage($this->folder, $result['panel_login_page_img'], "", 1);
-                $result['panel_profile_no_img'] = $this->common->getImage($this->folder, $result['panel_profile_no_img'], "", 1);
-                $result['panel_normal_no_img'] = $this->common->getImage($this->folder, $result['panel_normal_no_img'], "", 1);
-                $result['panel_portrait_no_img'] = $this->common->getImage($this->folder, $result['panel_portrait_no_img'], "", 1);
-                $result['panel_landscape_no_img'] = $this->common->getImage($this->folder, $result['panel_landscape_no_img'], "", 1);
-                $result['powered_by_image'] = $this->common->getImage($this->folder, $result['powered_by_image'], "", 1);
+                $storageType = (int) ($result['app_logo_storage_type'] ?? Storage_Type());
+                $result['panel_login_page_img'] = $this->common->getImage($this->folder, $result['panel_login_page_img'], "", $storageType);
+                $result['panel_profile_no_img'] = $this->common->getImage($this->folder, $result['panel_profile_no_img'], "", $storageType);
+                $result['panel_normal_no_img'] = $this->common->getImage($this->folder, $result['panel_normal_no_img'], "", $storageType);
+                $result['panel_portrait_no_img'] = $this->common->getImage($this->folder, $result['panel_portrait_no_img'], "", $storageType);
+                $result['panel_landscape_no_img'] = $this->common->getImage($this->folder, $result['panel_landscape_no_img'], "", $storageType);
+                $result['powered_by_image'] = $this->common->getImage($this->folder, $result['powered_by_image'], "", $storageType);
                 $params['result'] = $result;
 
                 return view('admin.panel_setting.index', $params);
@@ -46,33 +47,39 @@ class PanelSettingController extends Controller
 
             if (isset($data['panel_login_page_img'])) {
 
-                $data['panel_login_page_img'] = $this->common->saveImage($data['panel_login_page_img'], $this->folder, 'panel_set_', 1);
-                $this->common->deleteImageToFolder($this->folder, basename($data['old_panel_login_page_img']), 1);
+                $storageType = (int) (Setting_Data('app_logo_storage_type') ?: Storage_Type());
+                $data['panel_login_page_img'] = $this->common->saveImage($data['panel_login_page_img'], $this->folder, 'panel_set_', $storageType);
+                $this->common->deleteImageToFolder($this->folder, basename($data['old_panel_login_page_img']), $storageType);
             }
             if (isset($data['panel_profile_no_img'])) {
 
-                $data['panel_profile_no_img'] = $this->common->saveImage($data['panel_profile_no_img'], $this->folder, 'panel_set_', 1);
-                $this->common->deleteImageToFolder($this->folder, basename($data['old_panel_profile_no_img']), 1);
+                $storageType = (int) (Setting_Data('app_logo_storage_type') ?: Storage_Type());
+                $data['panel_profile_no_img'] = $this->common->saveImage($data['panel_profile_no_img'], $this->folder, 'panel_set_', $storageType);
+                $this->common->deleteImageToFolder($this->folder, basename($data['old_panel_profile_no_img']), $storageType);
             }
             if (isset($data['panel_normal_no_img'])) {
 
-                $data['panel_normal_no_img'] = $this->common->saveImage($data['panel_normal_no_img'], $this->folder, 'panel_set_', 1);
-                $this->common->deleteImageToFolder($this->folder, basename($data['old_panel_normal_no_img']), 1);
+                $storageType = (int) (Setting_Data('app_logo_storage_type') ?: Storage_Type());
+                $data['panel_normal_no_img'] = $this->common->saveImage($data['panel_normal_no_img'], $this->folder, 'panel_set_', $storageType);
+                $this->common->deleteImageToFolder($this->folder, basename($data['old_panel_normal_no_img']), $storageType);
             }
             if (isset($data['panel_portrait_no_img'])) {
 
-                $data['panel_portrait_no_img'] = $this->common->saveImage($data['panel_portrait_no_img'], $this->folder, 'panel_set_', 1);
-                $this->common->deleteImageToFolder($this->folder, basename($data['old_panel_portrait_no_img']), 1);
+                $storageType = (int) (Setting_Data('app_logo_storage_type') ?: Storage_Type());
+                $data['panel_portrait_no_img'] = $this->common->saveImage($data['panel_portrait_no_img'], $this->folder, 'panel_set_', $storageType);
+                $this->common->deleteImageToFolder($this->folder, basename($data['old_panel_portrait_no_img']), $storageType);
             }
             if (isset($data['panel_landscape_no_img'])) {
 
-                $data['panel_landscape_no_img'] = $this->common->saveImage($data['panel_landscape_no_img'], $this->folder, 'panel_set_', 1);
-                $this->common->deleteImageToFolder($this->folder, basename($data['old_panel_landscape_no_img']), 1);
+                $storageType = (int) (Setting_Data('app_logo_storage_type') ?: Storage_Type());
+                $data['panel_landscape_no_img'] = $this->common->saveImage($data['panel_landscape_no_img'], $this->folder, 'panel_set_', $storageType);
+                $this->common->deleteImageToFolder($this->folder, basename($data['old_panel_landscape_no_img']), $storageType);
             }
             if (isset($data['powered_by_image'])) {
 
-                $data['powered_by_image'] = $this->common->saveImage($data['powered_by_image'], $this->folder, 'panel_set_', 1);
-                $this->common->deleteImageToFolder($this->folder, basename($data['old_powered_by_image']), 1);
+                $storageType = (int) (Setting_Data('app_logo_storage_type') ?: Storage_Type());
+                $data['powered_by_image'] = $this->common->saveImage($data['powered_by_image'], $this->folder, 'panel_set_', $storageType);
+                $this->common->deleteImageToFolder($this->folder, basename($data['old_powered_by_image']), $storageType);
             }
 
             foreach ($data as $key => $value) {
