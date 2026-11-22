@@ -24,8 +24,8 @@
     <meta name="twitter:description" content="{{ $description }}">
     <meta name="twitter:image" content="{{ $image }}">
 
-    <script type="application/ld+json">
-        @json([
+    @php
+        $structuredData = [
             '@context' => 'https://schema.org',
             '@type' => $content_type ?? 'VideoObject',
             'name' => $title,
@@ -37,8 +37,9 @@
                 'name' => 'Link Viral',
                 'url' => rtrim(config('app.seo_site_url'), '/') . '/',
             ],
-        ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
-    </script>
+        ];
+    @endphp
+    <script type="application/ld+json">{!! json_encode($structuredData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) !!}</script>
 
     <!-- Optional redirect for human visitors -->
     <script>
