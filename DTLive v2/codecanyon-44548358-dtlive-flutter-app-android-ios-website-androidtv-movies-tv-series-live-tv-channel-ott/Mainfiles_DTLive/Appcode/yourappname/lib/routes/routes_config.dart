@@ -36,6 +36,7 @@ import '../players/player_video.dart';
 import '../webpages/weberrorpage.dart';
 import '../webpages/webhome.dart';
 import '../webpages/webcontentvideodetails.dart';
+import '../webpages/webseopage.dart';
 import '../webpages/webrentstore.dart';
 import '../webpages/webcontentshowdetails.dart';
 import '../webpages/webcontentbyid.dart';
@@ -60,6 +61,15 @@ class RoutesConfig {
             oldPage: RoutesConstant.homePage,
             reqText: '',
           );
+        },
+      ),
+
+      /* Public CMS pages */
+      GoRoute(
+        path: '/page/:pageName',
+        builder: (context, state) {
+          final pageName = state.pathParameters['pageName'] ?? '';
+          return WebSeoPage(path: '/page/$pageName');
         },
       ),
 

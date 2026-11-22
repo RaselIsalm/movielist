@@ -65,6 +65,7 @@ jobs:
       - name: Build Flutter web release
         env:
           CONFIG_FILE: ${{ runner.temp }}/dtlive-build.json
+          DTLIVE_WEB_DOMAIN_URL: ${{ secrets.DTLIVE_WEB_DOMAIN_URL }}
         run: |
           APP_DIR="$(find "DTLive v2" -type d -path '*/Mainfiles_DTLive/Appcode/yourappname' -print -quit)"
           if [ -z "$APP_DIR" ]; then
@@ -73,7 +74,13 @@ jobs:
           fi
           cd "$APP_DIR"
           flutter pub get
-          BASE_HREF="/${GITHUB_REPOSITORY#*/}/"
+          # A custom domain such as linkviral.seedintrade.com is served from
+          # the origin root. GitHub's default project URL needs the repository
+          # subpath instead.
+          case "$DTLIVE_WEB_DOMAIN_URL" in
+            *github.io/*) BASE_HREF="/${GITHUB_REPOSITORY#*/}/" ;;
+            *) BASE_HREF="/" ;;
+          esac
           flutter build web --release --no-wasm-dry-run --base-href "$BASE_HREF" --dart-define-from-file="$CONFIG_FILE"
           echo "APP_DIR=$APP_DIR" >> "$GITHUB_ENV"
 

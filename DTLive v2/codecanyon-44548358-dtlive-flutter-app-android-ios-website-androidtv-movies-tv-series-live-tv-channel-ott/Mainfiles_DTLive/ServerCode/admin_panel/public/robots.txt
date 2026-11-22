@@ -1,2 +1,9 @@
 User-agent: *
-Disallow:
+Allow: /
+Disallow: /admin/
+Disallow: /producer/
+Disallow: /api/
+Allow: /api/seo
+Allow: /api/sitemap.xml
+
+Sitemap: https://linkviral.seedintrade.com/sitemap.xml

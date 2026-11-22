@@ -7,15 +7,33 @@
   <meta http-equiv="X-UA-Compatible" content="IE=Edge">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="description"
-    content="Explore a curated collection of locally hosted videos, stories, music visuals, and creator conversations on DTLive Studio.">
+    content="Watch movies, TV series, live TV and short videos on Link Viral.">
+  <link rel="canonical" href="https://linkviral.seedintrade.com/">
+  <meta property="og:title" content="Link Viral | Movies, TV Series and Live Entertainment">
+  <meta property="og:description"
+    content="Watch movies, TV series, live TV and short videos on Link Viral.">
+  <meta property="og:site_name" content="Link Viral">
+  <meta property="og:url" content="https://linkviral.seedintrade.com/">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="https://linkviral.seedintrade.com/icons/Icon-192.png">
+
+  <script id="link-viral-site-schema" type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "name": "Link Viral",
+      "alternateName": ["LinkViral", "linkviral.seedintrade.com"],
+      "url": "https://linkviral.seedintrade.com/"
+    }
+  </script>
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="DTLive Studio">
+  <meta name="apple-mobile-web-app-title" content="Link Viral">
   <meta name="theme-color" content="#000000">
 
-  <title>DTLive Studio</title>
+  <title>Link Viral | Movies, TV Series and Live Entertainment</title>
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
   <link rel="icon" type="image/png" href="favicon.png" />
@@ -777,7 +795,7 @@
       </div>
 
       <div id="sp-tag">
-        <span class="sp-tag-line">My boyfriend's back from the army. Triple cumshot and I'm covered in cum. VIRTUAL SEX</span>
+        <span class="sp-tag-line">Watch movies, TV series, live TV and short videos on Link Viral.</span>
       </div>
 
       <div id="sp-dots">
@@ -823,17 +841,90 @@
     import { getMessaging } from "https://www.gstatic.com/firebasejs/9.9.1/firebase-messaging.js";
 
     const firebaseConfig = {
-      apiKey: "XXXXXXXXXXXXXXXXXXXXXXXX",
-      authDomain: "XXXXXXXXXXXXXXXXXXXXXXXX",
-      projectId: "XXXXXXXXXXXXX",
-      storageBucket: "XXXXXXXXXXXXXXXXXXXXXXXX",
-      messagingSenderId: "XXXXXXXXXXXXXX",
-      appId: "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+      apiKey: "AIzaSyDtOUk23PrTjn_CXbMf36CRcOK7LnHYGos",
+      authDomain: "yourappname-9aca3.firebaseapp.com",
+      projectId: "yourappname-9aca3",
+      storageBucket: "yourappname-9aca3.firebasestorage.app",
+      messagingSenderId: "946063364931",
+      appId: "1:946063364931:web:2c9415841519ebab57d5f6"
     };
 
     const app = initializeApp(firebaseConfig);
-    const analytics = getAnalytics(app);
-    const messaging = getMessaging(app);
+    try {
+      // Firebase Analytics sends web traffic to the linked GA4 property.
+      getAnalytics(app);
+    } catch (error) {
+      console.warn("Firebase Analytics is unavailable on this browser.", error);
+    }
+    try {
+      getMessaging(app);
+    } catch (error) {
+      console.warn("Firebase Messaging is unavailable on this browser.", error);
+    }
+  </script>
+
+  <!-- Apply crawlable titles and social metadata to public deep links. -->
+  <script>
+    (function () {
+      var path = window.location.pathname.replace(/\/+$/, '') || '/';
+      var privatePath = /^\/(profile|myspace|watchlist|settings|editprofile|tvactivate|loginsocial|loginotp|payment|paymentsuccess|paymentcancel|subscription|subscribed|history|purchase|referandearn|referandearnhistory|wallet|wallethistory|reviews|player|continuewatching|cannotwatch|avatar|search)(\/|$)/.test(path);
+      if (privatePath) {
+        var robots = document.querySelector('meta[name="robots"]');
+        if (!robots) {
+          robots = document.createElement('meta');
+          robots.setAttribute('name', 'robots');
+          document.head.appendChild(robots);
+        }
+        robots.setAttribute('content', 'noindex,nofollow,noarchive');
+        return;
+      }
+      if (!/^\/(details|shorts|page)(\/|$)/.test(path)) return;
+
+      var endpoint = '/api/seo?path=' + encodeURIComponent(path);
+      fetch(endpoint, { headers: { 'Accept': 'application/json' } })
+        .then(function (response) {
+          return response.ok ? response.json() : null;
+        })
+        .then(function (metadata) {
+          if (!metadata) return;
+          if (metadata.title) document.title = metadata.title;
+
+          var setMeta = function (attribute, key, value) {
+            if (!value) return;
+            var selector = 'meta[' + attribute + '="' + key + '"]';
+            var element = document.querySelector(selector);
+            if (!element) {
+              element = document.createElement('meta');
+              element.setAttribute(attribute, key);
+              document.head.appendChild(element);
+            }
+            element.setAttribute('content', value);
+          };
+
+          setMeta('name', 'description', metadata.description);
+          setMeta('property', 'og:title', metadata.title);
+          setMeta('property', 'og:description', metadata.description);
+          setMeta('property', 'og:url', metadata.canonical);
+          setMeta('property', 'og:image', metadata.image);
+
+          var canonical = document.querySelector('link[rel="canonical"]');
+          if (canonical && metadata.canonical) canonical.setAttribute('href', metadata.canonical);
+
+          if (metadata.structured_data) {
+            var schema = document.getElementById('link-viral-page-schema');
+            if (!schema) {
+              schema = document.createElement('script');
+              schema.id = 'link-viral-page-schema';
+              schema.type = 'application/ld+json';
+              document.head.appendChild(schema);
+            }
+            schema.textContent = JSON.stringify(metadata.structured_data);
+          }
+        })
+        .catch(function () {
+          // The app remains usable if the optional SEO endpoint is unavailable.
+        });
+    })();
   </script>
 
   <!-- Flutter bootstrap -->

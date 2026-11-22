@@ -27,7 +27,7 @@ class Constant {
     const String.fromEnvironment('DTLIVE_API_TOKEN', defaultValue: ''),
   );
 
-  static String appName = "DTLive Studio";
+  static String appName = "Link Viral";
   static String appPackageName =
       "com.example.yourappname"; // This is used for PIP channel
   static String appleAppId = ""; // This is used for Appstore iOS App redirect

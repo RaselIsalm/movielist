@@ -12,10 +12,18 @@
 */
 
 use App\Http\Controllers\Api\HomeController;
+use App\Http\Controllers\Api\SeoController;
 use App\Http\Controllers\Api\UserController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
+
+// Public SEO endpoints. They expose only active, public catalog metadata and
+// do not require a user session or the mobile API token.
+Route::get('seo', [SeoController::class, 'metadata'])->name('api.seo.metadata');
+Route::get('sitemap.xml', [SeoController::class, 'sitemap'])
+    ->withoutMiddleware('throttle:api')
+    ->name('api.seo.sitemap');
 
 // Serve catalog files through the API middleware stack so Flutter Web receives
 // same-origin responses. Cloud disks are streamed with HTTP Range support;

@@ -45,13 +45,15 @@ class ShareController extends Controller
         $url_path = $sub_video_type > 0
             ? "details/{$video_type}/{$type_id}/{$id}/{$sub_video_type}"
             : "details/{$video_type}/{$type_id}/{$id}";
+        $canonical_url = rtrim(config('app.seo_site_url'), '/') . "/{$url_path}";
 
         return view('share.details', [
             'title' => $data['name'] ?? "",
             'description' => Str::limit($data['description'] ?? "", 150),
             'image' => $image,
-            'url' => env('APP_URL') . "/{$url_path}",
-            'redirect_url' => env('WEB_URL') . "/{$url_path}",
+            'url' => $canonical_url,
+            'redirect_url' => $canonical_url,
+            'content_type' => ($video_type == 2 || $sub_video_type == 2) ? 'TVSeries' : 'Movie',
         ]);
     }
     public function shorts($video_type = 0, $type_id = 0, $id = 0)
@@ -67,13 +69,15 @@ class ShareController extends Controller
             : asset('assets/imgs/logo.png');
 
         $url_path = "shorts/{$video_type}/{$type_id}/{$id}";
+        $canonical_url = rtrim(config('app.seo_site_url'), '/') . "/{$url_path}";
 
         return view('share.details', [
             'title' => $data['name'] ?? "",
             'description' => Str::limit($data['description'] ?? "", 150),
             'image' => $image,
-            'url' => env('APP_URL') . "/{$url_path}",
-            'redirect_url' => env('WEB_URL') . "/{$url_path}",
+            'url' => $canonical_url,
+            'redirect_url' => $canonical_url,
+            'content_type' => 'VideoObject',
         ]);
     }
 }

@@ -54,6 +54,12 @@ return [
 
     'url' => env('APP_URL', null),
 
+    // Canonical public web host used by sitemap and SEO metadata.
+    'seo_site_url' => env(
+        'SEO_SITE_URL',
+        env('WEB_URL', env('APP_URL', 'https://linkviral.seedintrade.com'))
+    ),
+
     // Optional document root override for serving the Flutter web build while
     // keeping the Laravel application outside the public web directory.
     'public_path' => env('APP_PUBLIC_PATH'),
