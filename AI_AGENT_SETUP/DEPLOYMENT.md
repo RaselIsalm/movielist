@@ -37,6 +37,26 @@ direct short-lived signed URLs instead. If a Cloudflare custom media domain is
 configured, set that value as `DTLIVE_MEDIA_PUBLIC_URL` and configure its CORS
 policy for the web app origin.
 
+Bulk movie saves enqueue one background job per staged video. Keep the Laravel
+database queue worker running on the `media-video` queue so R2 transfers continue
+after the admin page returns. On this host, install the repo's
+`scripts/run-media-queue-worker.sh` as a per-user cron watchdog and keep its log
+under `storage/logs`. The live host uses a per-minute cron watchdog; the worker
+restarts its child processes hourly and after crashes.
+
+The admin bulk movie save endpoint queues each completed staged video for
+background R2 storage. Production must run a database queue worker on the
+`media-video` queue, for example. The repository worker starts three controlled
+workers by default; set `MEDIA_QUEUE_WORKERS=1` when the host needs a lower
+parallelism limit.
+
+```bash
+php artisan queue:work database --queue=media-video --sleep=1 --timeout=21600 --tries=3
+```
+
+The admin page polls each upload receipt while the worker continues after the
+Save button returns.
+
 After taking a database backup, audit and migrate existing local media with:
 
 ```bash

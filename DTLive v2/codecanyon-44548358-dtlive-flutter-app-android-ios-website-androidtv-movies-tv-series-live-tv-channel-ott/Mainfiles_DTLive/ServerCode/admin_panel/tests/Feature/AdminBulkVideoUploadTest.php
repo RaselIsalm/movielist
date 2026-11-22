@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\ProcessBulkVideoUpload;
 use App\Http\Middleware\Installation;
 use App\Models\Admin;
 use App\Models\Category;
@@ -15,6 +16,7 @@ use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 class AdminBulkVideoUploadTest extends TestCase
@@ -280,19 +282,39 @@ class AdminBulkVideoUploadTest extends TestCase
         Storage::disk('public')->assertExists('content/' . $video->video_320);
     }
 
-    public function test_it_removes_staged_data_after_a_database_batch_rolls_back(): void
+    public function test_it_queues_each_video_independently_without_uploading_in_the_request(): void
     {
-        Schema::table('tbl_video', function (Blueprint $table) {
-            $table->unique('name');
-        });
+        Queue::fake();
         $uploadIds = [
             $this->uploadMp4('one.mp4', $this->validMp4('one')),
             $this->uploadMp4('two.mp4', $this->validMp4('two')),
         ];
 
-        $this->postJson(route('admin.video.bulk.save'), $this->batchPayload($uploadIds))->assertStatus(400);
-        $this->assertSame(0, Video::count(), 'The database transaction must roll back all batch rows.');
+        $this->postJson(route('admin.video.bulk.save'), $this->batchPayload($uploadIds))
+            ->assertOk()
+            ->assertJson(['status' => 200, 'count' => 2, 'queued_count' => 2]);
+        Queue::assertPushed(ProcessBulkVideoUpload::class, 2);
+        $this->assertSame(0, Video::count(), 'The web request must only enqueue background work.');
         $this->assertSame([], Storage::disk('public')->allFiles('content'));
+    }
+
+    public function test_it_accepts_and_queues_one_hundred_upload_ids_as_json(): void
+    {
+        Queue::fake();
+        $uploadIds = [];
+        for ($index = 0; $index < 100; $index++) {
+            $uploadIds[] = $this->uploadMp4('movie-' . $index . '.mp4', $this->validMp4('movie ' . $index));
+        }
+
+        $payload = $this->batchPayload([]);
+        unset($payload['upload_ids']);
+        $payload['upload_ids_json'] = json_encode($uploadIds);
+        $this->postJson(route('admin.video.bulk.save'), $payload)
+            ->assertOk()
+            ->assertJson(['status' => 200, 'count' => 100, 'queued_count' => 100]);
+
+        Queue::assertPushed(ProcessBulkVideoUpload::class, 100);
+        $this->assertSame(0, Video::count());
     }
 
     public function test_upload_endpoints_require_an_authenticated_admin(): void

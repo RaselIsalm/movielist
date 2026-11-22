@@ -555,17 +555,23 @@ class VideoController extends Controller
         return response()->json(['status' => 200]);
     }
 
-    /** Save every completed staged movie with the batch's shared metadata. */
+    /** Queue every completed staged movie for background R2 processing. */
     public function bulkUploadSave(Request $request)
     {
-        @set_time_limit(0);
+        // JSON keeps 500–1000 upload IDs below PHP's max_input_vars limit.
+        if ($request->filled('upload_ids_json') && !$request->has('upload_ids')) {
+            $decodedIds = json_decode((string) $request->input('upload_ids_json'), true);
+            if (is_array($decodedIds)) {
+                $request->merge(['upload_ids' => $decodedIds]);
+            }
+        }
 
         $validator = Validator::make($request->all(), [
             'title' => 'required|string|min:2|max:255',
             'type_id' => 'required|integer',
             'category_id' => 'required|integer',
             'language_id' => 'required|integer',
-            'upload_ids' => 'required|array|min:1',
+            'upload_ids' => 'required|array|min:1|max:2000',
             'upload_ids.*' => 'required|uuid|distinct',
         ]);
         if ($validator->fails()) {
@@ -588,184 +594,86 @@ class VideoController extends Controller
         sort($canonicalIds, SORT_STRING);
         $batchKey = hash('sha256', implode('|', $canonicalIds));
         $receipts = session()->get('bulk_video_receipts', []);
-        if (isset($receipts[$batchKey]) && $receipts[$batchKey]['expires_at'] > time()) {
+        if (isset($receipts[$batchKey]) && $receipts[$batchKey]['expires_at'] > time()
+            && isset($receipts[$batchKey]['response']['upload_ids'])) {
             return response()->json($receipts[$batchKey]['response']);
         }
 
+        $storageType = (int) Storage_Type();
+        if (!in_array($storageType, [1, 2, 3], true)) {
+            return response()->json(['status' => 500, 'errors' => ['The configured video storage type is not supported.']], 500);
+        }
+
         $uploads = session()->get('bulk_video_uploads', []);
-        $batch = [];
+        $queuedIds = [];
+        $completedIds = [];
+        $statusItems = [];
         foreach ($uploadIds as $uploadId) {
             // The session is only a convenience cache. Keep the authoritative
             // receipt beside each staged file so a lost/rotated admin session
             // cannot make an already uploaded movie disappear at save time.
             $upload = $this->readBulkUpload($uploadId) ?? ($uploads[$uploadId] ?? null);
             $videoPath = $this->bulkUploadDirectory($uploadId) . DIRECTORY_SEPARATOR . $uploadId . '.mp4';
-            $posterPath = $this->bulkUploadDirectory($uploadId) . DIRECTORY_SEPARATOR . $uploadId . '.poster.jpg';
             if (!$upload || !$upload['complete'] || !is_file($videoPath) || filesize($videoPath) !== $upload['size']) {
                 return response()->json(['status' => 400, 'errors' => ['Every selected video must finish uploading before the batch can be saved.']], 422);
             }
-            // A client preview is optional. HEVC/large videos often cannot be
-            // decoded in the browser; ffmpeg generates the thumbnail below.
-            $batch[] = ['id' => $uploadId, 'upload' => $upload, 'path' => $videoPath, 'poster_path' => $posterPath];
-        }
 
-        $storageType = (int) Storage_Type();
-        $diskName = [1 => 'public', 2 => 's3', 3 => 'wasabi'][$storageType] ?? null;
-        if (!$diskName) {
-            return response()->json(['status' => 500, 'errors' => ['The configured video storage type is not supported.']], 500);
-        }
-
-        $savedPaths = [];
-        try {
-            $preparedBatch = [];
-            foreach ($batch as $item) {
-                $filename = 'vid_' . date('Y_m_d_') . Str::uuid() . '.mp4';
-                $targetPath = $this->folder_content . '/' . $filename;
-                $savedPaths[] = $targetPath;
-                $stream = fopen($item['path'], 'rb');
-                if ($stream === false) {
-                    throw new Exception('Unable to read a completed staged video.');
-                }
-                try {
-                    $stored = Storage::disk($diskName)->put($targetPath, $stream);
-                } finally {
-                    fclose($stream);
-                }
-                if (!$stored) {
-                    throw new Exception('Unable to store video ' . $item['upload']['name'] . '.');
-                }
-                $item['filename'] = $filename;
-                $item['target_path'] = $targetPath;
-
-                // Do not transcode every quality variant inside the HTTP
-                // save request. A 50-file batch would otherwise run ffmpeg
-                // serially and leave the Save button spinning for minutes.
-                // The uploaded H.264/MP4 remains the canonical 320p stream;
-                // higher variants can be generated later by a queue/repair job.
-                $qualityVariants = [
-                    'video_320' => $filename,
-                    'video_480' => '',
-                    'video_720' => '',
-                    'video_1080' => '',
-                ];
-                $item['filename'] = $qualityVariants['video_320'];
-                $item['video_480'] = $qualityVariants['video_480'];
-                $item['video_720'] = $qualityVariants['video_720'];
-                $item['video_1080'] = $qualityVariants['video_1080'];
-                foreach ([$item['filename'], $item['video_480'], $item['video_720'], $item['video_1080']] as $variant) {
-                    if ($variant !== '' && $variant !== $filename) {
-                        $savedPaths[] = $this->folder_content . '/' . $variant;
-                    }
-                }
-
-                $posterFilename = 'vid_' . date('Y_m_d_') . Str::uuid() . '.jpg';
-                $posterTargetPath = $this->folder_content . '/' . $posterFilename;
-                $savedPaths[] = $posterTargetPath;
-                if (!is_file($item['poster_path'])) {
-                    // Preview generation must never prevent a completed video
-                    // from being saved. HEVC and very large files can make
-                    // ffmpeg unavailable or take longer than the web request.
-                    // Keep a valid placeholder and let the missing-preview
-                    // repair tool generate the real frame later.
-                    try {
-                        app(\App\Services\VideoTranscoder::class)->createPoster(
-                            $item['path'],
-                            $this->bulkUploadDirectory($item['id']) . DIRECTORY_SEPARATOR . $item['id'] . '.poster.jpg'
-                        );
-                        $item['poster_path'] = $this->bulkUploadDirectory($item['id']) . DIRECTORY_SEPARATOR . $item['id'] . '.poster.jpg';
-                    } catch (\Throwable $previewException) {
-                        Log::warning('Bulk video preview generation skipped; using placeholder.', [
-                            'upload' => $item['upload']['name'],
-                            'error' => $previewException->getMessage(),
-                        ]);
-                        $item['poster_path'] = public_path('assets/imgs/no_img.png');
-                    }
-                }
-                $posterStream = fopen($item['poster_path'], 'rb');
-                if ($posterStream === false) {
-                    throw new Exception('Unable to read a generated video preview.');
-                }
-                try {
-                    $posterStored = Storage::disk($diskName)->put($posterTargetPath, $posterStream);
-                } finally {
-                    fclose($posterStream);
-                }
-                if (!$posterStored) {
-                    throw new Exception('Unable to store the preview image for ' . $item['upload']['name'] . '.');
-                }
-                $item['poster_filename'] = $posterFilename;
-                $preparedBatch[] = $item;
+            $status = $upload['status'] ?? 'uploaded';
+            if ($status === 'completed') {
+                $completedIds[] = $uploadId;
+                $statusItems[$uploadId] = ['status' => 'completed', 'video_id' => $upload['video_id'] ?? null];
+                continue;
             }
-            $batch = $preparedBatch;
 
-            $videos = DB::transaction(function () use ($batch, $request, $type, $storageType) {
-                $created = [];
-                foreach ($batch as $item) {
-                    $created[] = Video::create([
-                        'type_id' => $type->id,
-                        'video_type' => $type->type,
-                        'channel_id' => 0,
-                        'producer_id' => 0,
-                        'category_id' => (string) $request->input('category_id'),
-                        'language_id' => (string) $request->input('language_id'),
-                        'cast_id' => '',
-                        'name' => trim($request->input('title')),
-                        'storage_type' => $storageType,
-                        'thumbnail' => $item['poster_filename'],
-                        'landscape' => $item['poster_filename'],
-                        'description' => '',
-                        'video_storage_type' => $storageType,
-                        'video_upload_type' => 'server_video',
-                        'video_320' => $item['filename'],
-                        'video_480' => $item['video_480'] ?? '',
-                        'video_720' => $item['video_720'] ?? '',
-                        'video_1080' => $item['video_1080'] ?? '',
-                        'video_extension' => 'mp4',
-                        'video_duration' => 0,
-                        'trailer_storage_type' => $storageType,
-                        'trailer_type' => '',
-                        'trailer_url' => '',
-                        'subtitle_storage_type' => $storageType,
-                        'subtitle_type' => 'server_video',
-                        'subtitle_lang_1' => '',
-                        'subtitle_lang_2' => '',
-                        'subtitle_lang_3' => '',
-                        'subtitle_1' => '',
-                        'subtitle_2' => '',
-                        'subtitle_3' => '',
-                        'release_date' => '',
-                        'is_premium' => 0,
-                        'is_title' => 0,
-                        'is_download' => 0,
-                        'is_comment' => 0,
-                        'is_like' => 0,
-                        'is_rent' => 0,
-                        'price' => 0,
-                        'rent_day' => 0,
-                        'avg_rating' => 0,
-                        'total_review' => 0,
-                        'total_view' => 0,
-                        'total_like' => 0,
-                        'status' => 1,
-                    ]);
-                }
-                return $created;
-            });
-        } catch (Exception $exception) {
-            foreach ($savedPaths as $path) {
-                Storage::disk($diskName)->delete($path);
+            $saveState = array_merge($upload, [
+                'status' => 'queued',
+                'error' => null,
+                'save' => [
+                    'title' => trim($request->input('title')),
+                    'type_id' => (int) $request->input('type_id'),
+                    'category_id' => (int) $request->input('category_id'),
+                    'language_id' => (int) $request->input('language_id'),
+                    'storage_type' => $storageType,
+                    'batch_key' => $batchKey,
+                ],
+                // Keep storage names stable across worker retries and date
+                // changes; a retry must never create a second R2 object.
+                'video_filename' => 'vid_' . date('Y_m_d_') . $uploadId . '.mp4',
+                'poster_filename' => 'vid_' . date('Y_m_d_') . $uploadId . '.jpg',
+                'queued_at' => now()->toIso8601String(),
+            ]);
+            $this->persistBulkUpload($uploadId, $saveState);
+            try {
+                dispatch(new \App\Jobs\ProcessBulkVideoUpload($uploadId, (int) Auth::guard('admin')->id()));
+            } catch (\Throwable $exception) {
+                $saveState['status'] = 'failed';
+                $saveState['error'] = $exception->getMessage();
+                $this->persistBulkUpload($uploadId, $saveState);
+                return response()->json(['status' => 400, 'errors' => [$exception->getMessage()]], 400);
             }
-            return response()->json(['status' => 400, 'errors' => [$exception->getMessage()]], 400);
+            $processed = $this->readBulkUpload($uploadId);
+            if (($processed['status'] ?? '') === 'completed') {
+                $completedIds[] = $uploadId;
+                $statusItems[$uploadId] = ['status' => 'completed', 'video_id' => $processed['video_id'] ?? null];
+            } else {
+                $queuedIds[] = $uploadId;
+                $statusItems[$uploadId] = ['status' => $processed['status'] ?? 'queued'];
+            }
         }
 
         $response = [
             'status' => 200,
-            'success' => count($videos) . ' videos added successfully.',
-            'count' => count($videos),
-            'video_ids' => array_map(function ($video) { return $video->id; }, $videos),
+            'success' => count($queuedIds) . ' videos queued for background storage.',
+            'count' => count($uploadIds),
+            'queued_count' => count($queuedIds),
+            'completed_count' => count($completedIds),
+            'video_ids' => array_values(array_filter(array_map(function ($item) {
+                return $item['video_id'] ?? null;
+            }, $statusItems))),
+            'upload_ids' => $uploadIds,
+            'items' => $statusItems,
         ];
         foreach ($uploadIds as $uploadId) {
-            $this->deleteBulkUploadDirectory($uploadId);
             unset($uploads[$uploadId]);
         }
         session()->put('bulk_video_uploads', $uploads);
@@ -778,6 +686,40 @@ class VideoController extends Controller
         session()->put('bulk_video_receipts', $receipts);
 
         return response()->json($response);
+    }
+
+    /** Return background R2 processing status without relying on the browser session. */
+    public function bulkUploadStatus(Request $request)
+    {
+        if ($request->filled('upload_ids_json') && !$request->has('upload_ids')) {
+            $decodedIds = json_decode((string) $request->input('upload_ids_json'), true);
+            if (is_array($decodedIds)) {
+                $request->merge(['upload_ids' => $decodedIds]);
+            }
+        }
+        $validator = Validator::make($request->all(), [
+            'upload_ids' => 'required|array|min:1|max:2000',
+            'upload_ids.*' => 'required|uuid|distinct',
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['status' => 400, 'errors' => $validator->errors()->all()], 422);
+        }
+
+        $items = [];
+        foreach ($request->input('upload_ids') as $uploadId) {
+            $upload = $this->readBulkUpload($uploadId);
+            if (!$upload) {
+                $items[$uploadId] = ['status' => 'missing'];
+                continue;
+            }
+            $items[$uploadId] = [
+                'status' => $upload['status'] ?? ($upload['complete'] ? 'uploaded' : 'uploading'),
+                'video_id' => $upload['video_id'] ?? null,
+                'error' => $upload['error'] ?? null,
+            ];
+        }
+
+        return response()->json(['status' => 200, 'items' => $items]);
     }
 
     private function bulkUploadDirectory($uploadId)

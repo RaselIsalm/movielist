@@ -119,6 +119,7 @@ Route::group(['middleware' => 'installation'], function () {
             Route::post('thumbnail', [VideoController::class, 'bulkUploadThumbnail'])->name('thumbnail');
             Route::post('remove', [VideoController::class, 'bulkUploadRemove'])->name('remove');
             Route::post('save', [VideoController::class, 'bulkUploadSave'])->name('save');
+            Route::post('status', [VideoController::class, 'bulkUploadStatus'])->name('status');
         });
         Route::post('video/save', [VideoController::class, 'store'])->name('video.store');
         Route::get('video/edit/{video_id}/{type_id}', [VideoController::class, 'edit'])->name('video.edit');

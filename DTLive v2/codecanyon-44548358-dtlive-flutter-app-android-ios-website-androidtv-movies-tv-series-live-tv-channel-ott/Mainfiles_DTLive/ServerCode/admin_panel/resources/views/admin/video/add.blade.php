@@ -35,7 +35,7 @@
                     <div class="card-body d-flex flex-wrap align-items-center justify-content-between">
                         <div>
                             <strong>Upload multiple movies</strong>
-                            <div class="text-muted">Choose multiple MP4 files, set shared details once, and upload them one at a time. The server creates previews when a browser cannot decode a file.</div>
+                            <div class="text-muted">Choose multiple MP4 files, set shared details once, and let the server finish R2 storage in the background. The server creates previews when a browser cannot decode a file.</div>
                         </div>
                         <div class="mt-2 mt-md-0">
                             <button type="button" class="btn btn-default" id="show_bulk_video_mode">Bulk upload</button>
@@ -50,6 +50,7 @@
                     data-thumbnail-url="{{ route('admin.video.bulk.thumbnail') }}"
                     data-remove-url="{{ route('admin.video.bulk.remove') }}"
                     data-save-url="{{ route('admin.video.bulk.save') }}"
+                    data-status-url="{{ route('admin.video.bulk.status') }}"
                     data-type-id="{{ $type['id'] }}"
                     data-csrf="{{ csrf_token() }}"
                     data-demo-mode="{{ Demo_Mode() }}"
@@ -90,7 +91,7 @@
                             <div class="form-group mb-0">
                                 <label for="bulk_video_files">Choose MP4 videos <span class="text-danger">*</span></label>
                                 <input type="file" id="bulk_video_files" class="form-control" accept=".mp4,video/mp4" multiple>
-                                <small class="form-text text-muted">Uploads run one file at a time. Each video is processed and saved separately, so a later failure does not undo videos already saved. Keep this page open until the queue finishes.</small>
+                                <small class="form-text text-muted">Uploads start in parallel. Save queues the completed files on the server; R2 transfer continues in the background and can be retried per video.</small>
                             </div>
                         </div>
                     </div>
@@ -686,7 +687,7 @@
     <script src="{{ asset('/assets/js/plupload.full.min.js')}}"></script>
     <script src="{{ asset('/assets/js/common.js')}}"></script>
     @if($type['type'] == 1)
-        <script src="{{ asset('/assets/js/bulk-video-upload-20261121.js?v=20261122-bulk5') }}"></script>
+        <script src="{{ asset('/assets/js/bulk-video-upload-20261121.js?v=20261122-bulk7') }}"></script>
     @endif
 
     <script>
