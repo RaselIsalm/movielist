@@ -128,28 +128,31 @@ class Common extends Model
     public function byDefaultImg($type = "") // profile, landscape, portrait, normal
     {
         $panel_data = Setting_Data();
-        $appName = rtrim((string) Config::get('app.image_url'), '/');
         $folder = "app";
+        $storageType = (int) ($panel_data['app_logo_storage_type'] ?? Storage_Type());
 
         if ($type == "profile") {
 
             $name = $panel_data['panel_profile_no_img'] ?? '';
-            if ($folder && $name && Storage::disk('public')->exists($folder . '/' . $name)) {
-                return $appName . '/' . $folder . '/' . $name;
+            $url = $this->resolveMediaUrl($folder, $name, $storageType);
+            if ($url !== null) {
+                return $url;
             }
             return asset('assets/imgs/profile.png');
         } else if ($type == "landscape") {
 
             $name = $panel_data['panel_landscape_no_img'] ?? '';
-            if ($folder && $name && Storage::disk('public')->exists($folder . '/' . $name)) {
-                return $appName . '/' . $folder . '/' . $name;
+            $url = $this->resolveMediaUrl($folder, $name, $storageType);
+            if ($url !== null) {
+                return $url;
             }
             return $this->normalImg();
         } else if ($type == "portrait") {
 
             $name = $panel_data['panel_portrait_no_img'] ?? '';
-            if ($folder && $name && Storage::disk('public')->exists($folder . '/' . $name)) {
-                return $appName . '/' . $folder . '/' . $name;
+            $url = $this->resolveMediaUrl($folder, $name, $storageType);
+            if ($url !== null) {
+                return $url;
             }
             return $this->normalImg();
         }
@@ -158,21 +161,13 @@ class Common extends Model
     public function normalImg() // Normal Image
     {
         $panel_data = Setting_Data();
-        $appName = rtrim((string) Config::get('app.image_url'), '/');
         $folder = "app";
+        $storageType = (int) ($panel_data['app_logo_storage_type'] ?? Storage_Type());
 
         $name = $panel_data['panel_normal_no_img'] ?? '';
 
-        if ($name != "") {
-
-            if (Storage::disk('public')->exists($folder . '/' . $name)) {
-                return $appName . '/' . $folder . '/' . $name;
-            } else {
-                return asset('assets/imgs/no_img.png');
-            }
-        } else {
-            return asset('assets/imgs/no_img.png');
-        }
+        return $this->resolveMediaUrl($folder, $name, $storageType)
+            ?? asset('assets/imgs/no_img.png');
     }
     public function getVideo($folder = "", $name = "", $storage_type = 1)
     {

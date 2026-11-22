@@ -71,12 +71,16 @@ function Login_Image()
 {
     $Panel_Data = Setting_Data();
 
-    $appName = Config::get('app.image_url');
-    $name = $Panel_Data['panel_login_page_img'];
+    $name = $Panel_Data['panel_login_page_img'] ?? '';
     $folder = "app";
 
-    if ($name != "" && Storage::disk('public')->exists($folder . '/' . $name)) {
-        return $appName . $folder . '/' . $name;
+    if ($name != "") {
+        return (new Common())->getImage(
+            $folder,
+            $name,
+            'normal',
+            (int) ($Panel_Data['app_logo_storage_type'] ?? Storage_Type())
+        );
     }
     return asset('assets/imgs/login.webp');
 }
