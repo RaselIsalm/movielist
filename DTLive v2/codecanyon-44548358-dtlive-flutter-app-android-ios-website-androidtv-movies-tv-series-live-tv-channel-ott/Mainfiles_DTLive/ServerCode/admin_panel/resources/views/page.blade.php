@@ -1,7 +1,43 @@
+@php
+    $pageTitle = (string) ($result['title'] ?? 'Link Viral');
+    $pageDescription = trim(strip_tags((string) ($result['description'] ?? '')));
+    $pageDescription = \Illuminate\Support\Str::limit($pageDescription, 160, '');
+    $seoSiteUrl = rtrim(config('app.seo_site_url'), '/');
+    $pageUrl = $seoSiteUrl . '/page/' . rawurlencode($pageTitle);
+    $pageImage = $seoSiteUrl . '/assets/imgs/logo.png';
+    $pageStructuredData = [
+        '@context' => 'https://schema.org',
+        '@type' => 'WebPage',
+        'name' => $pageTitle,
+        'description' => $pageDescription,
+        'url' => $pageUrl,
+        'isPartOf' => [
+            '@type' => 'WebSite',
+            'name' => 'Link Viral',
+            'url' => $seoSiteUrl . '/',
+        ],
+    ];
+@endphp
+<!doctype html>
 <html lang="en">
     <head>
         <meta charset="utf-8">
-        <title>{{ $result['title'] }} | {{ App_Name() }}</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>{{ $pageTitle }} | Link Viral</title>
+        <meta name="description" content="{{ $pageDescription }}">
+        <meta name="robots" content="index,follow">
+        <link rel="canonical" href="{{ $pageUrl }}">
+        <meta property="og:type" content="article">
+        <meta property="og:site_name" content="Link Viral">
+        <meta property="og:title" content="{{ $pageTitle }} | Link Viral">
+        <meta property="og:description" content="{{ $pageDescription }}">
+        <meta property="og:url" content="{{ $pageUrl }}">
+        <meta property="og:image" content="{{ $pageImage }}">
+        <meta name="twitter:card" content="summary_large_image">
+        <meta name="twitter:title" content="{{ $pageTitle }} | Link Viral">
+        <meta name="twitter:description" content="{{ $pageDescription }}">
+        <meta name="twitter:image" content="{{ $pageImage }}">
+        <script type="application/ld+json">{!! json_encode($pageStructuredData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) !!}</script>
 
         <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
 
@@ -29,7 +65,7 @@
     </head>
 
     <body>
-        <p class="page-title">{{ $result['title'] }}</p>
+        <h1 class="page-title">{{ $pageTitle }}</h1>
         <div class="description">
             <?php echo htmlspecialchars_decode($result['description']); ?>
         </div>
