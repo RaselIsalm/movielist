@@ -15,6 +15,11 @@ return [
 
     'default' => env('FILESYSTEM_DRIVER', 'local'),
 
+    // Production can force every user-uploaded media write to Cloudflare R2.
+    // The local disk remains available for framework state and short-lived
+    // upload staging, but it must never become the media store.
+    'r2_only' => env('DTLIVE_R2_ONLY', false),
+
     /*
     |--------------------------------------------------------------------------
     | Filesystem Disks

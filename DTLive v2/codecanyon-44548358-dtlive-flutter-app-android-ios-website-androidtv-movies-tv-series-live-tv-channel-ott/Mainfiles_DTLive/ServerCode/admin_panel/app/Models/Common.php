@@ -28,6 +28,7 @@ class Common extends Model
     public function saveImage($org_name, $folder, $prefix = "", $storage_type = 1)
     {
         try {
+            $storage_type = $this->effectiveStorageType((int) $storage_type);
             $img_ext = $org_name->getClientOriginalExtension();
             $filename = $prefix . date('Y_m_d_') . uniqid() . '.' . $img_ext;
 
@@ -52,6 +53,7 @@ class Common extends Model
     public function URLSaveInImage($url, $folder, $prefix = "", $storage_type = 1)
     {
         try {
+            $storage_type = $this->effectiveStorageType((int) $storage_type);
             // Get extension safely
             $ext = pathinfo(parse_url($url, PHP_URL_PATH), PATHINFO_EXTENSION);
             if (!$ext) {
@@ -224,6 +226,7 @@ class Common extends Model
             return $name;
         }
 
+        $storageType = $this->effectiveStorageType($storageType);
         $path = trim($folder, '/') . '/' . ltrim($name, '/');
         if ($folder === '') {
             $path = ltrim($name, '/');
@@ -297,9 +300,18 @@ class Common extends Model
     {
         return (bool) preg_match('/^https?:\\/\\//i', $value);
     }
+
+    private function effectiveStorageType(int $storageType): int
+    {
+        return filter_var(config('filesystems.r2_only', false), FILTER_VALIDATE_BOOLEAN)
+            ? 2
+            : $storageType;
+    }
+
     public function deleteImageToFolder($folder, $name, $storage_type)
     {
         try {
+            $storage_type = $this->effectiveStorageType((int) $storage_type);
             $name = trim((string) $name);
             if ($name === '') {
                 return;

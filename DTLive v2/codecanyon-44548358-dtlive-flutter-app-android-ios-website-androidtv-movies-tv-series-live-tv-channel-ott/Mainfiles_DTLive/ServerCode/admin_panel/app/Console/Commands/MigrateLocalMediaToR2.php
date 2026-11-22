@@ -12,6 +12,7 @@ class MigrateLocalMediaToR2 extends Command
 {
     protected $signature = 'media:migrate-r2
         {--dry-run : Audit local media without uploading or changing the database}
+        {--delete-local : Delete each local source only after its R2 object passes verification}
         {--manifest= : JSON manifest path (defaults to storage/app/r2-migration-manifest.json)}';
 
     protected $description = 'Copy every local media object to the configured S3-compatible R2 disk and verify it';
@@ -58,6 +59,7 @@ class MigrateLocalMediaToR2 extends Command
             'objects_verified' => 0,
             'objects_missing' => 0,
             'objects_failed' => 0,
+            'local_objects_deleted' => 0,
             'records_scanned' => 0,
             'database_rows_updated' => 0,
             'referenced_media_verified' => 0,
@@ -114,6 +116,10 @@ class MigrateLocalMediaToR2 extends Command
                     $object['status'] = 'verified';
                     $verified[$path] = true;
                     $summary['objects_verified']++;
+                    if ($this->option('delete-local') && $source->delete($path)) {
+                        $object['local_deleted'] = true;
+                        $summary['local_objects_deleted']++;
+                    }
                 }
             } catch (Throwable $exception) {
                 $summary['objects_failed']++;
@@ -194,6 +200,8 @@ class MigrateLocalMediaToR2 extends Command
         $this->line('Manifest: ' . $manifestPath);
         if ($dryRun) {
             $this->comment('Dry run only: no objects or database rows were changed.');
+        } elseif ($this->option('delete-local')) {
+            $this->comment('Verified local media was deleted after matching R2 checksums.');
         }
         return $summary['objects_failed'] > 0 ? self::FAILURE : self::SUCCESS;
     }

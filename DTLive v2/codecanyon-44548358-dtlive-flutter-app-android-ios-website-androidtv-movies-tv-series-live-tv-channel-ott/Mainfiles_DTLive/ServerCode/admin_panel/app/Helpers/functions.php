@@ -100,8 +100,12 @@ function Storage_Setting()
 }
 function Storage_Type()
 {
+    if (filter_var(config('filesystems.r2_only', false), FILTER_VALIDATE_BOOLEAN)) {
+        return 2;
+    }
+
     $data = Storage_Setting();
-    return $data['storage_type'];
+    return (int) ($data['storage_type'] ?? 2);
 }
 function Commission()
 {

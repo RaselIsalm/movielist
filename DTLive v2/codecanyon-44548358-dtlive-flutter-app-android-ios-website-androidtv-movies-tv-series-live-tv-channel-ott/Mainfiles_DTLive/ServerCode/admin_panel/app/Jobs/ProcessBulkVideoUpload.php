@@ -77,7 +77,9 @@ class ProcessBulkVideoUpload implements ShouldQueue, ShouldBeUnique
                 throw new Exception('The staged video is incomplete or has changed.');
             }
 
-            $storageType = (int) ($save['storage_type'] ?? Storage_Type());
+            $storageType = filter_var(config('filesystems.r2_only', false), FILTER_VALIDATE_BOOLEAN)
+                ? 2
+                : (int) ($save['storage_type'] ?? Storage_Type());
             $diskName = [1 => 'public', 2 => 's3', 3 => 'wasabi'][$storageType] ?? null;
             if (!$diskName) {
                 throw new Exception('The configured video storage type is not supported.');

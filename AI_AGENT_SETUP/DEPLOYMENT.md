@@ -64,6 +64,15 @@ php artisan media:migrate-r2 --dry-run
 php artisan media:migrate-r2
 ```
 
+Set `DTLIVE_R2_ONLY=true` in production to force all new image, video,
+subtitle, and artwork writes to R2. The local disk is used only for temporary
+bulk-upload staging and framework state. After a verified migration, local
+media can be removed with `php artisan media:migrate-r2 --delete-local`.
+
+The media queue watchdog also runs `media:cleanup-staging` periodically. It
+removes abandoned staging files while preserving active queued/processing
+uploads, so a completed upload does not leave a permanent VPS copy.
+
 The command writes a JSON manifest, verifies object size and SHA-256 after each
 upload, updates a video's storage type only when its complete media group was
 verified, and keeps the local source files as a rollback copy.
