@@ -115,6 +115,7 @@ Route::group(['middleware' => 'installation'], function () {
         });
         Route::middleware('auth:admin')->prefix('video/bulk')->name('video.bulk.')->group(function () {
             Route::post('init', [VideoController::class, 'bulkUploadInit'])->name('init');
+            Route::post('part-url', [VideoController::class, 'bulkUploadPartUrl'])->name('part-url');
             Route::post('chunk', [VideoController::class, 'bulkUploadChunk'])->name('chunk');
             Route::post('thumbnail', [VideoController::class, 'bulkUploadThumbnail'])->name('thumbnail');
             Route::post('remove', [VideoController::class, 'bulkUploadRemove'])->name('remove');

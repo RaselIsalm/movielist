@@ -371,6 +371,13 @@ class VideoController extends Controller
         // upload. The VPS keeps only this small receipt and never assembles a
         // second local copy of the video.
         if ($this->directR2UploadsEnabled()) {
+            $chunkSize = (int) $upload['chunk_size'];
+            if ((int) ceil($upload['size'] / $chunkSize) > 10000) {
+                return response()->json([
+                    'status' => 422,
+                    'errors' => ['The selected file is too large for the configured R2 multipart chunk size.'],
+                ], 422);
+            }
             try {
                 [$client, $bucket] = $this->r2Client();
                 $videoFilename = 'vid_' . date('Y_m_d_') . $uploadId . '.mp4';
@@ -414,12 +421,69 @@ class VideoController extends Controller
             'status' => 200,
             'upload_id' => $uploadId,
             'chunk_size' => $upload['chunk_size'],
+            'direct_r2' => $this->browserDirectR2UploadsEnabled(),
+            'part_url' => $this->browserDirectR2UploadsEnabled() ? route('admin.video.bulk.part-url') : null,
         ]);
+    }
+
+    /** Return a short-lived R2 UploadPart URL so the browser bypasses Apache request buffering. */
+    public function bulkUploadPartUrl(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'upload_id' => 'required|uuid',
+            'chunk_index' => 'required|integer|min:0',
+            'chunk_count' => 'required|integer|min:1|max:10000',
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['status' => 400, 'errors' => $validator->errors()->all()], 422);
+        }
+
+        $uploadId = $request->input('upload_id');
+        $upload = $this->readBulkUpload($uploadId);
+        $directR2 = $upload ? $this->directR2UploadState($upload) : null;
+        if (!$upload || !$directR2 || !$this->browserDirectR2UploadsEnabled()) {
+            return response()->json(['status' => 409, 'errors' => ['Direct R2 upload is not available for this session.']], 409);
+        }
+
+        $chunkIndex = (int) $request->input('chunk_index');
+        $chunkCount = (int) $request->input('chunk_count');
+        $chunkSize = (int) ($upload['chunk_size'] ?? 0);
+        $expectedCount = $chunkSize > 0 ? (int) ceil($upload['size'] / $chunkSize) : 0;
+        if ($chunkSize <= 0 || $chunkCount !== $expectedCount || $chunkIndex >= $chunkCount) {
+            return response()->json(['status' => 422, 'errors' => ['Invalid R2 multipart sequence.']], 422);
+        }
+
+        try {
+            [$client, $bucket] = $this->r2Client();
+            $command = $client->getCommand('UploadPart', [
+                'Bucket' => $bucket,
+                'Key' => $directR2['key'],
+                'UploadId' => $directR2['upload_id'],
+                'PartNumber' => $chunkIndex + 1,
+            ]);
+            $presigned = $client->createPresignedRequest($command, '+15 minutes');
+
+            return response()->json([
+                'status' => 200,
+                'url' => (string) $presigned->getUri(),
+                'part_number' => $chunkIndex + 1,
+                'expires_in' => 900,
+            ]);
+        } catch (Throwable $exception) {
+            return response()->json(['status' => 500, 'errors' => ['Unable to sign the R2 upload part: ' . $exception->getMessage()]], 500);
+        }
     }
 
     /** Receive one retry-safe chunk and assemble the file when every chunk arrives. */
     public function bulkUploadChunk(Request $request)
     {
+        // In direct-R2 mode the browser sends only the ETag and byte count
+        // after uploading the chunk to the presigned R2 URL. No video body
+        // reaches PHP or Apache, so mod_fcgid cannot spill it to /tmp.
+        if ($this->directR2UploadsEnabled() && !$request->hasFile('chunk') && $request->filled('part_etag')) {
+            return $this->recordDirectR2Part($request);
+        }
+
         $validator = Validator::make($request->all(), [
             'upload_id' => 'required|uuid',
             'chunk_index' => 'required|integer|min:0',
@@ -612,6 +676,85 @@ class VideoController extends Controller
         return response()->json([
             'status' => 200,
             'complete' => $upload['complete'],
+            'uploaded_bytes' => $upload['complete'] ? $upload['size'] : null,
+        ]);
+    }
+
+    /** Record a browser-uploaded R2 part and complete the multipart object. */
+    private function recordDirectR2Part(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'upload_id' => 'required|uuid',
+            'chunk_index' => 'required|integer|min:0',
+            'chunk_count' => 'required|integer|min:1|max:10000',
+            'part_size' => 'required|integer|min:1',
+            'part_etag' => 'required|string|max:255',
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['status' => 400, 'errors' => $validator->errors()->all()], 422);
+        }
+
+        $uploadId = $request->input('upload_id');
+        $upload = $this->readBulkUpload($uploadId);
+        $directR2 = $upload ? $this->directR2UploadState($upload) : null;
+        if (!$upload || !$directR2) {
+            return response()->json(['status' => 404, 'errors' => ['Upload session not found.']], 404);
+        }
+        if (!empty($upload['complete'])) {
+            return response()->json(['status' => 200, 'complete' => true, 'uploaded_bytes' => $upload['size']]);
+        }
+
+        $chunkIndex = (int) $request->input('chunk_index');
+        $chunkCount = (int) $request->input('chunk_count');
+        $chunkSize = (int) ($upload['chunk_size'] ?? 0);
+        $expectedCount = $chunkSize > 0 ? (int) ceil($upload['size'] / $chunkSize) : 0;
+        $expectedBytes = $chunkSize > 0 ? min($chunkSize, $upload['size'] - ($chunkIndex * $chunkSize)) : 0;
+        if ($chunkCount !== $expectedCount || $chunkIndex >= $chunkCount || $expectedBytes <= 0 || (int) $request->input('part_size') !== $expectedBytes) {
+            return response()->json(['status' => 422, 'errors' => ['Uploaded R2 part metadata is invalid.']], 422);
+        }
+
+        $etag = trim((string) $request->input('part_etag'));
+        if (!preg_match('/^"?[A-Za-z0-9+\/_=-]{8,255}"?$/', $etag)) {
+            return response()->json(['status' => 422, 'errors' => ['R2 returned an invalid part ETag.']], 422);
+        }
+
+        $partKey = (string) $chunkIndex;
+        $directR2['parts'][$partKey] = [
+            'PartNumber' => $chunkIndex + 1,
+            'ETag' => $etag,
+            'Size' => $expectedBytes,
+        ];
+        $upload['chunk_count'] = $chunkCount;
+        $upload['r2'] = $directR2;
+
+        if (count($directR2['parts']) === $chunkCount) {
+            try {
+                [$client, $bucket] = $this->r2Client();
+                $parts = [];
+                for ($index = 0; $index < $chunkCount; $index++) {
+                    $part = $directR2['parts'][(string) $index] ?? null;
+                    if (!$part || empty($part['ETag'])) {
+                        throw new Exception('A previously uploaded R2 part is missing its ETag.');
+                    }
+                    $parts[] = ['PartNumber' => $index + 1, 'ETag' => $part['ETag']];
+                }
+                $client->completeMultipartUpload([
+                    'Bucket' => $bucket,
+                    'Key' => $directR2['key'],
+                    'UploadId' => $directR2['upload_id'],
+                    'MultipartUpload' => ['Parts' => $parts],
+                ]);
+                $upload['complete'] = true;
+                $upload['r2']['completed'] = true;
+            } catch (Throwable $exception) {
+                return response()->json(['status' => 500, 'errors' => [$exception->getMessage()]], 500);
+            }
+        }
+
+        $this->persistBulkUpload($uploadId, $upload);
+        return response()->json([
+            'status' => 200,
+            'complete' => (bool) $upload['complete'],
             'uploaded_bytes' => $upload['complete'] ? $upload['size'] : null,
         ]);
     }
@@ -990,6 +1133,12 @@ class VideoController extends Controller
         // DTLIVE_R2_ONLY env flag has not been added to an older deployment.
         return filter_var(config('filesystems.r2_only', false), FILTER_VALIDATE_BOOLEAN)
             || (int) Storage_Type() === 2;
+    }
+
+    private function browserDirectR2UploadsEnabled(): bool
+    {
+        return $this->directR2UploadsEnabled()
+            && filter_var(config('filesystems.browser_uploads', false), FILTER_VALIDATE_BOOLEAN);
     }
 
     private function minimumUploadFreeSpace(): int

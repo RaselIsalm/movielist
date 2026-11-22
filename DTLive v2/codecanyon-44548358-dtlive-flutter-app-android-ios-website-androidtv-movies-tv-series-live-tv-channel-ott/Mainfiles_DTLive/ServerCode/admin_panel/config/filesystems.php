@@ -19,6 +19,9 @@ return [
     // The local disk remains available for framework state and short-lived
     // upload staging, but it must never become the media store.
     'r2_only' => env('DTLIVE_R2_ONLY', false),
+    // Browser-to-R2 multipart PUTs require the bucket CORS policy. Keep the
+    // feature opt-in until the production bucket exposes ETag to the site.
+    'browser_uploads' => env('DTLIVE_R2_BROWSER_UPLOADS', false),
     'media_public_url' => env('DTLIVE_MEDIA_PUBLIC_URL', ''),
     'media_proxy' => env('DTLIVE_MEDIA_PROXY', true),
     'media_url_ttl' => env('DTLIVE_MEDIA_URL_TTL', 60),

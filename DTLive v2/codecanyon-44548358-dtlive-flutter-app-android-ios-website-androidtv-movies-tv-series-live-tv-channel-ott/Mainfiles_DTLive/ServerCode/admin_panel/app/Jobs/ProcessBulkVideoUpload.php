@@ -120,9 +120,15 @@ class ProcessBulkVideoUpload implements ShouldQueue, ShouldBeUnique
                 // may have the moov atom at the end. Repack once in the queue
                 // before publishing the catalog row, then overwrite the same
                 // immutable key with the range-friendly object.
-                $sourceTemp = tempnam(storage_path('app'), 'dtlive-r2-source-');
-                $fastStartTemp = tempnam(storage_path('app'), 'dtlive-r2-fast-');
-                if ($sourceTemp === false || $fastStartTemp === false) {
+                // ffmpeg detects the container from the filename when it
+                // writes the fast-start copy. tempnam() returns a path with
+                // no extension, which makes ffmpeg reject the output and
+                // leaves the R2 upload stuck in `failed` state. Keep these
+                // files private and short-lived, but give both an MP4 suffix.
+                $tempDirectory = storage_path('app');
+                $sourceTemp = $tempDirectory . '/dtlive-r2-source-' . bin2hex(random_bytes(12)) . '.mp4';
+                $fastStartTemp = $tempDirectory . '/dtlive-r2-fast-' . bin2hex(random_bytes(12)) . '.mp4';
+                if (!is_dir($tempDirectory) || !is_writable($tempDirectory)) {
                     throw new Exception('Unable to create temporary media files.');
                 }
                 try {

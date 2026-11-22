@@ -6,6 +6,7 @@
 
     const config = {
         initUrl: $section.data('init-url'),
+        partUrl: $section.data('part-url'),
         chunkUrl: $section.data('chunk-url'),
         thumbnailUrl: $section.data('thumbnail-url'),
         removeUrl: $section.data('remove-url'),
@@ -59,6 +60,47 @@
         for (let attempt = 0; attempt < 3; attempt++) {
             try {
                 return await request(url, data, onProgress);
+            } catch (error) {
+                lastError = error;
+                if (attempt < 2) {
+                    await new Promise(function (resolve) { window.setTimeout(resolve, 500 * (attempt + 1)); });
+                }
+            }
+        }
+        throw lastError;
+    }
+
+    function uploadR2Part(url, blob, onProgress) {
+        return new Promise(function (resolve, reject) {
+            const xhr = new XMLHttpRequest();
+            xhr.open('PUT', url, true);
+            xhr.timeout = 120000;
+            xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+            xhr.upload.onprogress = onProgress || null;
+            xhr.onload = function () {
+                if (xhr.status < 200 || xhr.status >= 300) {
+                    reject(new Error('Cloudflare R2 rejected an upload part (HTTP ' + xhr.status + ').'));
+                    return;
+                }
+                const etag = xhr.getResponseHeader('ETag') || xhr.getResponseHeader('etag');
+                if (!etag) {
+                    reject(new Error('Cloudflare R2 did not expose the part ETag. Check the R2 CORS ExposeHeaders setting.'));
+                    return;
+                }
+                resolve(etag);
+            };
+            xhr.onerror = function () { reject(new Error('Direct Cloudflare R2 upload failed.')); };
+            xhr.ontimeout = function () { reject(new Error('Direct Cloudflare R2 upload timed out.')); };
+            xhr.onabort = function () { reject(new Error('Direct Cloudflare R2 upload was cancelled.')); };
+            xhr.send(blob);
+        });
+    }
+
+    async function requestR2Part(url, blob, onProgress) {
+        let lastError;
+        for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+                return await uploadR2Part(url, blob, onProgress);
             } catch (error) {
                 lastError = error;
                 if (attempt < 2) {
@@ -265,21 +307,44 @@
 
         const actualChunkSize = initialized.chunk_size || chunkSize;
         const count = Math.ceil(item.file.size / actualChunkSize);
+        const directR2 = Boolean(initialized.direct_r2 && initialized.part_url && config.partUrl);
         item.label = 'Uploading';
         for (let index = 0; index < count; index++) {
             const start = index * actualChunkSize;
             const end = Math.min(start + actualChunkSize, item.file.size);
-            const body = new FormData();
-            body.append('upload_id', item.uploadId);
-            body.append('chunk_index', index);
-            body.append('chunk_count', count);
-            body.append('chunk', item.file.slice(start, end), item.file.name);
-            await requestChunk(config.chunkUrl, body, function (event) {
-                if (event.lengthComputable) {
-                    item.progress = Math.floor(((start + event.loaded) / item.file.size) * 100);
-                    renderQueue();
-                }
-            });
+            const chunk = item.file.slice(start, end);
+            if (directR2) {
+                const partRequest = new FormData();
+                partRequest.append('upload_id', item.uploadId);
+                partRequest.append('chunk_index', index);
+                partRequest.append('chunk_count', count);
+                const signed = await request(config.partUrl, partRequest);
+                const etag = await requestR2Part(signed.url, chunk, function (event) {
+                    if (event.lengthComputable) {
+                        item.progress = Math.floor(((start + event.loaded) / item.file.size) * 100);
+                        renderQueue();
+                    }
+                });
+                const receipt = new FormData();
+                receipt.append('upload_id', item.uploadId);
+                receipt.append('chunk_index', index);
+                receipt.append('chunk_count', count);
+                receipt.append('part_size', chunk.size);
+                receipt.append('part_etag', etag);
+                await requestChunk(config.chunkUrl, receipt);
+            } else {
+                const body = new FormData();
+                body.append('upload_id', item.uploadId);
+                body.append('chunk_index', index);
+                body.append('chunk_count', count);
+                body.append('chunk', chunk, item.file.name);
+                await requestChunk(config.chunkUrl, body, function (event) {
+                    if (event.lengthComputable) {
+                        item.progress = Math.floor(((start + event.loaded) / item.file.size) * 100);
+                        renderQueue();
+                    }
+                });
+            }
             item.progress = Math.floor((end / item.file.size) * 100);
             renderQueue();
         }

@@ -46,6 +46,7 @@
 
                 <section id="bulk_video_mode"
                     data-init-url="{{ route('admin.video.bulk.init') }}"
+                    data-part-url="{{ route('admin.video.bulk.part-url') }}"
                     data-chunk-url="{{ route('admin.video.bulk.chunk') }}"
                     data-thumbnail-url="{{ route('admin.video.bulk.thumbnail') }}"
                     data-remove-url="{{ route('admin.video.bulk.remove') }}"
@@ -687,7 +688,7 @@
     <script src="{{ asset('/assets/js/plupload.full.min.js')}}"></script>
     <script src="{{ asset('/assets/js/common.js')}}"></script>
     @if($type['type'] == 1)
-        <script src="{{ asset('/assets/js/bulk-video-upload-20261121.js?v=20261122-bulk7') }}"></script>
+        <script src="{{ asset('/assets/js/bulk-video-upload-20261121.js?v=20261122-bulk8') }}"></script>
     @endif
 
     <script>
