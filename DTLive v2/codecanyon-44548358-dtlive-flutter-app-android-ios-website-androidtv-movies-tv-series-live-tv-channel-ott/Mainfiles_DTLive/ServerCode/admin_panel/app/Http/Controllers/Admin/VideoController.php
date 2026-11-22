@@ -27,6 +27,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Throwable;
 
 // Video Type = 1- Movies, 2- TVShow, 3- Category, 4-Language, 5- Upcoming Content, 6- Channel Content, 7- Kids Content, 8- Shorts
 // Video Upload Type = server_video, external, youtube, live_stream_url
@@ -346,16 +347,48 @@ class VideoController extends Controller
         $upload = [
             'name' => basename($name),
             'size' => (int) $request->input('file_size'),
+            'chunk_size' => $this->directR2UploadsEnabled() ? 8 * 1024 * 1024 : 1024 * 1024,
             'chunk_count' => null,
             'complete' => false,
             'created_at' => time(),
         ];
+
+        // In R2-only mode each chunk is sent straight to an R2 multipart
+        // upload. The VPS keeps only this small receipt and never assembles a
+        // second local copy of the video.
+        if ($this->directR2UploadsEnabled()) {
+            try {
+                [$client, $bucket] = $this->r2Client();
+                $videoFilename = 'vid_' . date('Y_m_d_') . $uploadId . '.mp4';
+                $multipart = $client->createMultipartUpload([
+                    'Bucket' => $bucket,
+                    'Key' => $this->folder_content . '/' . $videoFilename,
+                    'ContentType' => 'video/mp4',
+                ]);
+                $upload['video_filename'] = $videoFilename;
+                $upload['poster_filename'] = 'vid_' . date('Y_m_d_') . $uploadId . '.jpg';
+                $upload['r2'] = [
+                    'bucket' => $bucket,
+                    'key' => $this->folder_content . '/' . $videoFilename,
+                    'upload_id' => (string) $multipart['UploadId'],
+                    'parts' => [],
+                    'completed' => false,
+                    'poster_uploaded' => false,
+                ];
+            } catch (Throwable $exception) {
+                return response()->json([
+                    'status' => 500,
+                    'errors' => ['Unable to start the direct R2 upload: ' . $exception->getMessage()],
+                ], 500);
+            }
+        }
         $uploads = session()->get('bulk_video_uploads', []);
         $uploads[$uploadId] = $upload;
         session()->put('bulk_video_uploads', $uploads);
 
         $directory = $this->bulkUploadDirectory($uploadId);
         if (!is_dir($directory) && !mkdir($directory, 0750, true) && !is_dir($directory)) {
+            $this->cleanupDirectR2Upload($upload);
             unset($uploads[$uploadId]);
             session()->put('bulk_video_uploads', $uploads);
             return response()->json(['status' => 500, 'errors' => ['Unable to prepare temporary upload storage.']], 500);
@@ -365,7 +398,7 @@ class VideoController extends Controller
         return response()->json([
             'status' => 200,
             'upload_id' => $uploadId,
-            'chunk_size' => 1024 * 1024,
+            'chunk_size' => $upload['chunk_size'],
         ]);
     }
 
@@ -376,7 +409,7 @@ class VideoController extends Controller
             'upload_id' => 'required|uuid',
             'chunk_index' => 'required|integer|min:0',
             'chunk_count' => 'required|integer|min:1|max:100000',
-            'chunk' => 'required|file|max:1024',
+            'chunk' => 'required|file|max:8192',
         ]);
         if ($validator->fails()) {
             return response()->json(['status' => 400, 'errors' => $validator->errors()->all()], 422);
@@ -394,7 +427,7 @@ class VideoController extends Controller
 
         $chunkIndex = (int) $request->input('chunk_index');
         $chunkCount = (int) $request->input('chunk_count');
-        $chunkSize = 1024 * 1024;
+        $chunkSize = (int) ($upload['chunk_size'] ?? 1024 * 1024);
         $expectedCount = (int) ceil($upload['size'] / $chunkSize);
         if ($chunkIndex >= $chunkCount || $chunkCount !== $expectedCount) {
             return response()->json(['status' => 400, 'errors' => ['Invalid chunk sequence.']], 422);
@@ -410,6 +443,76 @@ class VideoController extends Controller
         }
 
         $directory = $this->bulkUploadDirectory($uploadId);
+        $directR2 = $this->directR2UploadState($upload);
+        if ($directR2) {
+            try {
+                [$client, $bucket] = $this->r2Client();
+                $partKey = (string) $chunkIndex;
+                $part = $directR2['parts'][$partKey] ?? null;
+                if (!$part) {
+                    $stream = fopen($chunk->getRealPath(), 'rb');
+                    if ($stream === false) {
+                        throw new Exception('Unable to read the uploaded chunk.');
+                    }
+                    try {
+                        $result = $client->uploadPart([
+                            'Bucket' => $bucket,
+                            'Key' => $directR2['key'],
+                            'UploadId' => $directR2['upload_id'],
+                            'PartNumber' => $chunkIndex + 1,
+                            'Body' => $stream,
+                            'ContentLength' => $expectedBytes,
+                        ]);
+                    } finally {
+                        fclose($stream);
+                    }
+                    $directR2['parts'][$partKey] = [
+                        'PartNumber' => $chunkIndex + 1,
+                        'ETag' => (string) ($result['ETag'] ?? ''),
+                        'Size' => $expectedBytes,
+                    ];
+                }
+
+                $upload['chunk_count'] = $chunkCount;
+                $upload['r2'] = $directR2;
+                $this->persistBulkUpload($uploadId, $upload);
+
+                if (count($directR2['parts']) === $chunkCount) {
+                    $parts = [];
+                    for ($index = 0; $index < $chunkCount; $index++) {
+                        if (empty($directR2['parts'][(string) $index]['ETag'])) {
+                            throw new Exception('A previously uploaded R2 part is missing its ETag.');
+                        }
+                        $parts[] = [
+                            'PartNumber' => $index + 1,
+                            'ETag' => $directR2['parts'][(string) $index]['ETag'],
+                        ];
+                    }
+                    $client->completeMultipartUpload([
+                        'Bucket' => $bucket,
+                        'Key' => $directR2['key'],
+                        'UploadId' => $directR2['upload_id'],
+                        'MultipartUpload' => ['Parts' => $parts],
+                    ]);
+                    $upload['complete'] = true;
+                    $upload['r2']['completed'] = true;
+                    $this->persistBulkUpload($uploadId, $upload);
+                }
+
+                return response()->json([
+                    'status' => 200,
+                    'complete' => (bool) $upload['complete'],
+                    'uploaded_bytes' => $upload['complete'] ? $upload['size'] : null,
+                ]);
+            } catch (Throwable $exception) {
+                return response()->json(['status' => 500, 'errors' => [$exception->getMessage()]], 500);
+            } finally {
+                // FastPanel may use a shared upload_tmp_dir. Remove this
+                // request's temporary chunk as soon as R2 accepts it.
+                @unlink($chunk->getRealPath());
+            }
+        }
+
         $chunkPath = $directory . DIRECTORY_SEPARATOR . $uploadId . '.chunk.' . $chunkIndex;
         if (is_file($chunkPath)) {
             if (filesize($chunkPath) !== $expectedBytes || hash_file('sha256', $chunkPath) !== hash_file('sha256', $chunk->getRealPath())) {
@@ -523,6 +626,35 @@ class VideoController extends Controller
         }
 
         $directory = $this->bulkUploadDirectory($uploadId);
+        $directR2 = $this->directR2UploadState($upload);
+        if ($directR2) {
+            $posterFilename = (string) ($upload['poster_filename'] ?? ('vid_' . date('Y_m_d_') . $uploadId . '.jpg'));
+            $stream = fopen($thumbnail->getRealPath(), 'rb');
+            if ($stream === false) {
+                return response()->json(['status' => 500, 'errors' => ['Unable to read the preview image.']], 500);
+            }
+            try {
+                if (!Storage::disk('s3')->put($this->folder_content . '/' . $posterFilename, $stream, [
+                    'ContentType' => 'image/jpeg',
+                ])) {
+                    throw new Exception('Unable to store the preview image in R2.');
+                }
+            } catch (Throwable $exception) {
+                return response()->json(['status' => 500, 'errors' => [$exception->getMessage()]], 500);
+            } finally {
+                fclose($stream);
+                @unlink($thumbnail->getRealPath());
+            }
+
+            $upload['poster_complete'] = true;
+            $upload['poster_filename'] = $posterFilename;
+            $upload['r2']['poster_uploaded'] = true;
+            $uploads[$uploadId] = $upload;
+            session()->put('bulk_video_uploads', $uploads);
+            $this->persistBulkUpload($uploadId, $upload);
+            return response()->json(['status' => 200]);
+        }
+
         $posterName = $uploadId . '.poster.jpg';
         $posterPath = $directory . DIRECTORY_SEPARATOR . $posterName;
         if (is_file($posterPath)) {
@@ -548,6 +680,10 @@ class VideoController extends Controller
 
         $uploadId = $request->input('upload_id');
         $uploads = session()->get('bulk_video_uploads', []);
+        $upload = $this->readBulkUpload($uploadId) ?? ($uploads[$uploadId] ?? null);
+        if (is_array($upload)) {
+            $this->cleanupDirectR2Upload($upload);
+        }
         unset($uploads[$uploadId]);
         session()->put('bulk_video_uploads', $uploads);
         $this->deleteBulkUploadDirectory($uploadId);
@@ -614,7 +750,11 @@ class VideoController extends Controller
             // cannot make an already uploaded movie disappear at save time.
             $upload = $this->readBulkUpload($uploadId) ?? ($uploads[$uploadId] ?? null);
             $videoPath = $this->bulkUploadDirectory($uploadId) . DIRECTORY_SEPARATOR . $uploadId . '.mp4';
-            if (!$upload || !$upload['complete'] || !is_file($videoPath) || filesize($videoPath) !== $upload['size']) {
+            $directR2 = $this->directR2UploadState($upload ?? []);
+            $hasVideo = !is_array($upload) ? false : ($directR2
+                ? !empty($upload['complete']) && !empty($directR2['completed'])
+                : is_file($videoPath) && filesize($videoPath) === $upload['size']);
+            if (!$upload || !$upload['complete'] || !$hasVideo) {
                 return response()->json(['status' => 400, 'errors' => ['Every selected video must finish uploading before the batch can be saved.']], 422);
             }
 
@@ -804,6 +944,10 @@ class VideoController extends Controller
 
         foreach (glob($adminDirectory . DIRECTORY_SEPARATOR . '*', GLOB_ONLYDIR) ?: [] as $directory) {
             if (filemtime($directory) < time() - 86400) {
+                $metadata = json_decode((string) @file_get_contents($directory . DIRECTORY_SEPARATOR . 'meta.json'), true);
+                if (is_array($metadata)) {
+                    $this->cleanupDirectR2Upload($metadata);
+                }
                 foreach (glob($directory . DIRECTORY_SEPARATOR . '*') ?: [] as $path) {
                     if (is_file($path)) {
                         @unlink($path);
@@ -811,6 +955,70 @@ class VideoController extends Controller
                 }
                 @rmdir($directory);
             }
+        }
+    }
+
+    private function directR2UploadsEnabled(): bool
+    {
+        return filter_var(config('filesystems.r2_only', false), FILTER_VALIDATE_BOOLEAN);
+    }
+
+    private function directR2UploadState(array $upload): ?array
+    {
+        $r2 = $upload['r2'] ?? null;
+        if (!is_array($r2) || empty($r2['upload_id']) || empty($r2['key'])) {
+            return null;
+        }
+        return $r2;
+    }
+
+    private function r2Client(): array
+    {
+        $disk = Storage::disk('s3');
+        if (!method_exists($disk, 'getClient')) {
+            throw new Exception('The configured R2 disk does not expose its S3 client.');
+        }
+        $config = config('filesystems.disks.s3', []);
+        $bucket = trim((string) ($config['bucket'] ?? ''));
+        if ($bucket === '') {
+            throw new Exception('The R2 bucket is not configured.');
+        }
+        return [$disk->getClient(), $bucket];
+    }
+
+    private function cleanupDirectR2Upload(array $upload): void
+    {
+        $r2 = $this->directR2UploadState($upload);
+        if (!$r2) {
+            return;
+        }
+        // Once the database row exists, the R2 object is production media,
+        // not an abandoned upload receipt.
+        if (($upload['status'] ?? '') === 'completed' && !empty($upload['video_id'])) {
+            return;
+        }
+
+        try {
+            [$client, $bucket] = $this->r2Client();
+            if (!empty($r2['completed'])) {
+                if (!empty($r2['key'])) {
+                    Storage::disk('s3')->delete($r2['key']);
+                }
+                if (!empty($upload['poster_filename'])) {
+                    Storage::disk('s3')->delete($this->folder_content . '/' . $upload['poster_filename']);
+                }
+            } else {
+                $client->abortMultipartUpload([
+                    'Bucket' => $bucket,
+                    'Key' => $r2['key'],
+                    'UploadId' => $r2['upload_id'],
+                ]);
+            }
+        } catch (Throwable $exception) {
+            Log::warning('Unable to clean up a direct R2 upload.', [
+                'upload' => $upload['name'] ?? null,
+                'error' => $exception->getMessage(),
+            ]);
         }
     }
 

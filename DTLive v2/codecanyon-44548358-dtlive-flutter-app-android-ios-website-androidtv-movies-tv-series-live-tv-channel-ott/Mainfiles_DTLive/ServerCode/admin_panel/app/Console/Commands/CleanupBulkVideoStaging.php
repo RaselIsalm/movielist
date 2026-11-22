@@ -3,6 +3,9 @@
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
+use Throwable;
 
 class CleanupBulkVideoStaging extends Command
 {
@@ -60,7 +63,7 @@ class CleanupBulkVideoStaging extends Command
                     continue;
                 }
 
-                $files = $this->removeDirectory($directory);
+                $files = $this->removeDirectory($directory, $metadata);
                 $summary['directories_removed']++;
                 $summary['files_removed'] += $files;
                 $summary['bytes_removed'] += $size;
@@ -113,9 +116,10 @@ class CleanupBulkVideoStaging extends Command
         return $bytes;
     }
 
-    private function removeDirectory(string $directory): int
+    private function removeDirectory(string $directory, array $metadata = []): int
     {
         $files = 0;
+        $this->cleanupDirectR2($metadata);
         foreach (glob($directory . DIRECTORY_SEPARATOR . '*') ?: [] as $path) {
             if (is_file($path) || is_link($path)) {
                 if (@unlink($path)) {
@@ -125,6 +129,45 @@ class CleanupBulkVideoStaging extends Command
         }
         @rmdir($directory);
         return $files;
+    }
+
+    private function cleanupDirectR2(array $metadata): void
+    {
+        $r2 = $metadata['r2'] ?? null;
+        if (!is_array($r2) || empty($r2['key'])) {
+            return;
+        }
+        if (($metadata['status'] ?? '') === 'completed' && !empty($metadata['video_id'])) {
+            return;
+        }
+
+        try {
+            $disk = Storage::disk('s3');
+            if (!empty($r2['completed'])) {
+                $disk->delete($r2['key']);
+                if (!empty($metadata['poster_filename'])) {
+                    $disk->delete('content/' . $metadata['poster_filename']);
+                }
+                return;
+            }
+
+            if (method_exists($disk, 'getClient') && !empty($r2['upload_id'])) {
+                $config = config('filesystems.disks.s3', []);
+                $bucket = trim((string) ($config['bucket'] ?? ''));
+                if ($bucket !== '') {
+                    $disk->getClient()->abortMultipartUpload([
+                        'Bucket' => $bucket,
+                        'Key' => $r2['key'],
+                        'UploadId' => $r2['upload_id'],
+                    ]);
+                }
+            }
+        } catch (Throwable $exception) {
+            Log::warning('Unable to clean up a stale direct R2 upload.', [
+                'key' => $r2['key'],
+                'error' => $exception->getMessage(),
+            ]);
+        }
     }
 
     private function formatBytes(int $bytes): string

@@ -72,9 +72,14 @@ class ProcessBulkVideoUpload implements ShouldQueue, ShouldBeUnique
 
             $directory = $this->stagingDirectory();
             $videoPath = $directory . DIRECTORY_SEPARATOR . $this->uploadId . '.mp4';
-            $videoSize = is_file($videoPath) ? filesize($videoPath) : false;
-            if ($videoSize === false || (int) $videoSize !== (int) ($state['size'] ?? 0)) {
-                throw new Exception('The staged video is incomplete or has changed.');
+            $directR2 = $this->directR2State($state);
+            if ($directR2) {
+                $videoSize = (int) ($state['size'] ?? 0);
+            } else {
+                $videoSize = is_file($videoPath) ? filesize($videoPath) : false;
+                if ($videoSize === false || (int) $videoSize !== (int) ($state['size'] ?? 0)) {
+                    throw new Exception('The staged video is incomplete or has changed.');
+                }
             }
 
             $storageType = filter_var(config('filesystems.r2_only', false), FILTER_VALIDATE_BOOLEAN)
@@ -86,10 +91,10 @@ class ProcessBulkVideoUpload implements ShouldQueue, ShouldBeUnique
             }
 
             $filename = (string) ($state['video_filename'] ?? ('vid_' . date('Y_m_d_') . $this->uploadId . '.mp4'));
-            $targetPath = 'content/' . $filename;
+            $targetPath = $directR2['key'] ?? ('content/' . $filename);
             $disk = Storage::disk($diskName);
             $existing = Video::where('video_320', $filename)->first();
-            if (!$existing || !$disk->exists($targetPath)) {
+            if (!$directR2 && (!$existing || !$disk->exists($targetPath))) {
                 $stream = fopen($videoPath, 'rb');
                 if ($stream === false) {
                     throw new Exception('Unable to read the completed staged video.');
@@ -102,10 +107,15 @@ class ProcessBulkVideoUpload implements ShouldQueue, ShouldBeUnique
                 } finally {
                     fclose($stream);
                 }
+            } elseif ($directR2 && !$disk->exists($targetPath)) {
+                throw new Exception('The completed R2 video object is missing.');
             }
 
             $posterPath = $directory . DIRECTORY_SEPARATOR . $this->uploadId . '.poster.jpg';
-            if (!is_file($posterPath)) {
+            $posterFilename = (string) ($state['poster_filename'] ?? ('vid_' . date('Y_m_d_') . $this->uploadId . '.jpg'));
+            $posterTargetPath = 'content/' . $posterFilename;
+            $posterAlreadyUploaded = $directR2 && !empty($directR2['poster_uploaded']);
+            if (!$posterAlreadyUploaded && !$directR2 && !is_file($posterPath)) {
                 try {
                     app(VideoTranscoder::class)->createPoster($videoPath, $posterPath);
                 } catch (Throwable $previewException) {
@@ -115,11 +125,14 @@ class ProcessBulkVideoUpload implements ShouldQueue, ShouldBeUnique
                     ]);
                     $posterPath = public_path('assets/imgs/no_img.png');
                 }
+            } elseif (!$posterAlreadyUploaded && $directR2) {
+                // A direct upload has no local source to run ffmpeg against.
+                // Use the standard placeholder until the browser preview is
+                // uploaded, which keeps the VPS free of video copies.
+                $posterPath = public_path('assets/imgs/no_img.png');
             }
 
-            $posterFilename = (string) ($state['poster_filename'] ?? ('vid_' . date('Y_m_d_') . $this->uploadId . '.jpg'));
-            $posterTargetPath = 'content/' . $posterFilename;
-            if (!$existing || !$disk->exists($posterTargetPath)) {
+            if (!$posterAlreadyUploaded && (!$existing || !$disk->exists($posterTargetPath))) {
                 $posterStream = fopen($posterPath, 'rb');
                 if ($posterStream === false) {
                     throw new Exception('Unable to read the generated video preview.');
@@ -224,6 +237,15 @@ class ProcessBulkVideoUpload implements ShouldQueue, ShouldBeUnique
     private function stagingDirectory(): string
     {
         return storage_path('app/bulk-video-staging/' . $this->adminId . '/' . $this->uploadId);
+    }
+
+    private function directR2State(array $state): ?array
+    {
+        $r2 = $state['r2'] ?? null;
+        if (!is_array($r2) || empty($r2['completed']) || empty($r2['key'])) {
+            return null;
+        }
+        return $r2;
     }
 
     private function readState(): ?array
