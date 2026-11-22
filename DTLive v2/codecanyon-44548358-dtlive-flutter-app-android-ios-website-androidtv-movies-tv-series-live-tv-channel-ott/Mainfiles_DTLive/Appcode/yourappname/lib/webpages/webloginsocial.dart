@@ -1,12 +1,8 @@
-import 'dart:io';
-
 import 'package:flutter_locales/flutter_locales.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:intl_phone_field/intl_phone_field.dart';
 import 'package:provider/provider.dart';
 
 import '../provider/generalprovider.dart';
@@ -17,7 +13,6 @@ import '../provider/sectiondataprovider.dart';
 import '../routes/routes_constant.dart';
 import '../utils/color.dart';
 import '../utils/constant.dart';
-import '../utils/sharedpre.dart';
 import '../utils/utils.dart';
 import '../webwidget/interactive_icon.dart';
 import '../webwidget/webfooter.dart';
@@ -39,13 +34,8 @@ class WebLoginSocial extends StatefulWidget {
 }
 
 class _WebLoginSocialState extends State<WebLoginSocial> {
-  SharedPre sharedPre = SharedPre();
-  final numberController = TextEditingController();
-  String? mobileNumber, email, userName, strType, strDeviceType, strDeviceToken;
-  File? mProfileImg;
+  String? email, userName, strType, strDeviceType, strDeviceToken;
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  bool initialized = false;
-  String? webServerClientId;
 
   final ScrollController _mainScrollController = ScrollController();
 
@@ -81,8 +71,6 @@ class _WebLoginSocialState extends State<WebLoginSocial> {
   }
 
   Future<void> _getDeviceToken() async {
-    webServerClientId = await sharedPre.read(Constant.googleClientIdKey);
-    printLog("_getDeviceToken webServerClientId ===> $webServerClientId");
     String? token = await Utils.getFirebaseWebToken();
     strDeviceToken = token;
     strDeviceType = "3";
@@ -486,172 +474,7 @@ class _WebLoginSocialState extends State<WebLoginSocial> {
           fontstyle: FontStyle.normal,
         ),
         const SizedBox(height: 24),
-        /* Field label */
-        MyText(
-          color: descTextColor,
-          text: "mobile_number_label",
-          multilanguage: true,
-          fontsizeNormal: 10,
-          fontsizeWeb: 11,
-          fontweight: FontWeight.w600,
-          maxline: 1,
-          overflow: TextOverflow.ellipsis,
-          textalign: TextAlign.start,
-          fontstyle: FontStyle.normal,
-        ),
-        const SizedBox(height: 8),
-        Container(
-          width: double.infinity,
-          height: 52,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          decoration: BoxDecoration(
-            color: white.withValues(alpha: 0.04),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: white.withValues(alpha: 0.10), width: 1),
-          ),
-          alignment: Alignment.centerLeft,
-          child: IntlPhoneField(
-            disableLengthCheck: true,
-            controller: numberController,
-            textAlignVertical: TextAlignVertical.center,
-            autovalidateMode: AutovalidateMode.disabled,
-            style: kIsWeb
-                ? const TextStyle(
-                    color: white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 3.0,
-                  )
-                : GoogleFonts.inter(
-                    color: white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 3.0,
-                  ),
-            showCountryFlag: false,
-            showDropdownIcon: false,
-            initialCountryCode: Constant.defaultCountryCode,
-            dropdownTextStyle: kIsWeb
-                ? const TextStyle(
-                    color: white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                  )
-                : GoogleFonts.inter(
-                    color: white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                  ),
-            keyboardType: TextInputType.number,
-            textInputAction: TextInputAction.next,
-            decoration: InputDecoration(
-              contentPadding: EdgeInsets.zero,
-              isCollapsed: true,
-              border: InputBorder.none,
-              hintStyle: kIsWeb
-                  ? const TextStyle(
-                      color: descTextColor,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w400,
-                      letterSpacing: 1.0,
-                    )
-                  : GoogleFonts.inter(
-                      color: descTextColor,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w400,
-                      letterSpacing: 1.0,
-                    ),
-              hintText: Locales.string(context, "enter_mobile"),
-            ),
-            onChanged: (phone) {
-              printLog('===> ${phone.completeNumber}');
-              mobileNumber = phone.completeNumber;
-              printLog('===>mobileNumber $mobileNumber');
-            },
-            onCountryChanged: (country) {
-              printLog('===> ${country.name}');
-              printLog('===> ${country.code}');
-            },
-          ),
-        ),
-        const SizedBox(height: 20),
-        InteractiveIcon(
-          builder: (isHovered) {
-            return InkWell(
-              onTap: () async {
-                printLog("Click mobileNumber ==> $mobileNumber");
-                if (numberController.text.toString().isEmpty) {
-                  Utils.showToast(
-                    Locales.string(context, "enter_mobile_toast"),
-                  );
-                } else {
-                  printLog("mobileNumber ==> $mobileNumber");
-                  if (!mounted) return;
-                  Utils.openWebDialog(
-                    context: context,
-                    newPage: RoutesConstant.loginOTPPage,
-                    oldPage: widget.oldPage ?? "",
-                    reqText: mobileNumber ?? "",
-                  );
-                }
-              },
-              focusColor: transparent,
-              hoverColor: transparent,
-              borderRadius: BorderRadius.circular(10),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
-                width: double.infinity,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: isHovered
-                      ? colorPrimary.withValues(alpha: 0.88)
-                      : colorPrimary,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                alignment: Alignment.center,
-                child: MyText(
-                  color: appBgColor,
-                  text: "login",
-                  multilanguage: true,
-                  fontsizeNormal: 15,
-                  fontsizeWeb: 15,
-                  fontweight: FontWeight.w700,
-                  maxline: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textalign: TextAlign.center,
-                  fontstyle: FontStyle.normal,
-                ),
-              ),
-            );
-          },
-        ),
-        const SizedBox(height: 24),
-        Row(
-          children: [
-            Expanded(
-              child: Container(height: 1, color: white.withValues(alpha: 0.08)),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              child: MyText(
-                color: white.withValues(alpha: 0.35),
-                text: "or",
-                multilanguage: true,
-                fontsizeNormal: 11,
-                fontsizeWeb: 11,
-                fontweight: FontWeight.w600,
-                maxline: 1,
-                overflow: TextOverflow.ellipsis,
-                textalign: TextAlign.center,
-                fontstyle: FontStyle.normal,
-              ),
-            ),
-            Expanded(
-              child: Container(height: 1, color: white.withValues(alpha: 0.08)),
-            ),
-          ],
-        ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 30),
         InteractiveIcon(
           builder: (isHovered) {
             return InkWell(
@@ -705,16 +528,16 @@ class _WebLoginSocialState extends State<WebLoginSocial> {
 
   /* Google(Gmail) Login */
   Future<void> _gmailLogin() async {
-    UserCredential userCredential;
     try {
       LoadingOverlay().show(context);
-      GoogleAuthProvider authProvider = GoogleAuthProvider();
-      authProvider.setCustomParameters({
-        'prompt': 'select_account',
-      }); // force chooser
+      // Persist the Firebase web session until the user explicitly logs out.
+      if (kIsWeb) {
+        await _auth.setPersistence(Persistence.LOCAL);
+      }
+      final authProvider = GoogleAuthProvider();
       authProvider.addScope('email');
       authProvider.addScope('profile');
-      userCredential = await _auth.signInWithPopup(authProvider);
+      final userCredential = await _auth.signInWithPopup(authProvider);
 
       if (userCredential.user == null) {
         LoadingOverlay().hide();
@@ -725,26 +548,27 @@ class _WebLoginSocialState extends State<WebLoginSocial> {
         "_gmailLogin UserName ======> ${userCredential.user?.displayName}",
       );
       printLog("_gmailLogin UserEmail =====> ${userCredential.user?.email}");
-      String firebasedid = userCredential.user?.uid ?? "";
-      printLog('_gmailLogin firebasedid ===> $firebasedid');
+      printLog('_gmailLogin firebasedid ===> ${userCredential.user?.uid ?? ""}');
 
-      /* Hide overlay before showing referral dialog */
       LoadingOverlay().hide();
       if (!mounted) return;
-      final referralCode = await Utils.showReferralDialog(context);
-      if (!mounted) return;
       LoadingOverlay().show(context);
-      checkAndNavigate(
+      await checkAndNavigate(
         userCredential.user?.email ?? "",
         userCredential.user?.displayName ?? "",
         "2",
-        referenceCode: referralCode,
       );
     } on FirebaseAuthException catch (e) {
-      printLog('_gmailLogin Firebase Error Code ==> ${e.code.toString()}');
-      printLog('_gmailLogin Firebase Error =======> ${e.message.toString()}');
+      printLog('_gmailLogin Firebase Error Code ==> ${e.code}');
+      printLog('_gmailLogin Firebase Error =======> ${e.message}');
       if (!mounted) return;
       LoadingOverlay().hide();
+      Utils.showToast(e.message ?? "Google sign-in failed. Please try again.");
+    } on Exception catch (e) {
+      printLog('_gmailLogin Exception =======> $e');
+      if (!mounted) return;
+      LoadingOverlay().hide();
+      Utils.showToast("Google sign-in failed. Please try again.");
     }
   }
 

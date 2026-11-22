@@ -7,6 +7,9 @@
     RewriteRule ^api(?:/|$) index.php [L]
     RewriteRule ^admin(?:/|$) index.php [L]
 
+    # Never serve Firebase service-account material from the public web root.
+    RewriteRule (^|/).*firebase_service_account.*\.json$ - [F,L,NC]
+
     # Serve existing files and folders directly (like JS, CSS, assets)
     RewriteCond %{REQUEST_FILENAME} -f [OR]
     RewriteCond %{REQUEST_FILENAME} -d

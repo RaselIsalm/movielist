@@ -4,13 +4,9 @@ import 'package:flutter_locales/flutter_locales.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:sign_in_with_apple/sign_in_with_apple.dart';
-import 'package:intl_phone_field/intl_phone_field.dart';
 import 'package:provider/provider.dart';
 
-import '../pages/otpverify.dart';
 import '../provider/bottombarprovider.dart';
 import '../provider/generalprovider.dart';
 import '../provider/homeprovider.dart';
@@ -34,9 +30,7 @@ class LoginSocialState extends State<LoginSocial> {
   late GeneralProvider generalProvider;
   SharedPre sharedPre = SharedPre();
 
-  final numberController = TextEditingController();
-  String? mobileNumber,
-      email,
+  String? email,
       userName,
       strType,
       strDeviceType,
@@ -47,7 +41,6 @@ class LoginSocialState extends State<LoginSocial> {
   final GoogleSignIn googleSignIn = GoogleSignIn.instance;
   bool initialized = false;
   String? webServerClientId;
-  String userEmail = "";
 
   @override
   void initState() {
@@ -117,7 +110,6 @@ class LoginSocialState extends State<LoginSocial> {
 
   @override
   void dispose() {
-    numberController.dispose();
     LoadingOverlay().hide();
     super.dispose();
   }
@@ -164,7 +156,7 @@ class LoginSocialState extends State<LoginSocial> {
                     const SizedBox(height: 7),
                     MyText(
                       color: descTextColor,
-                      text: "login_with_mobile_note",
+                      text: "sign_in_subtitle",
                       fontsizeNormal: 14,
                       fontsizeWeb: 15,
                       multilanguage: true,
@@ -175,136 +167,6 @@ class LoginSocialState extends State<LoginSocial> {
                       fontstyle: FontStyle.normal,
                     ),
                     const SizedBox(height: 30),
-
-                    /* Enter Mobile Number */
-                    Container(
-                      width: MediaQuery.of(context).size.width,
-                      height: 50,
-                      decoration: BoxDecoration(
-                        border: Border.all(color: colorPrimary, width: 0.7),
-                        color: edtShadowColor,
-                        borderRadius: const BorderRadius.all(
-                          Radius.circular(5),
-                        ),
-                      ),
-                      child: IntlPhoneField(
-                        disableLengthCheck: true,
-                        textAlignVertical: TextAlignVertical.center,
-                        autovalidateMode: AutovalidateMode.disabled,
-                        controller: numberController,
-                        style: const TextStyle(fontSize: 16, color: white),
-                        showCountryFlag: false,
-                        showDropdownIcon: false,
-                        initialCountryCode: Constant.defaultCountryCode,
-                        dropdownTextStyle: GoogleFonts.inter(
-                          color: white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500,
-                        ),
-                        keyboardType: TextInputType.number,
-                        textInputAction: TextInputAction.done,
-                        decoration: InputDecoration(
-                          border: InputBorder.none,
-                          filled: false,
-                          hintStyle: GoogleFonts.inter(
-                            color: descTextColor,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                          ),
-                          hintText: Locales.string(context, "enter_mobile"),
-                        ),
-                        onChanged: (phone) {
-                          printLog('===> ${phone.completeNumber}');
-                          printLog('===> ${numberController.text}');
-                          mobileNumber = phone.completeNumber;
-                          printLog('===>mobileNumber $mobileNumber');
-                        },
-                        onCountryChanged: (country) {
-                          printLog('===> ${country.name}');
-                          printLog('===> ${country.code}');
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 25),
-
-                    /* Login Button */
-                    InkWell(
-                      onTap: () {
-                        printLog("Click mobileNumber ==> $mobileNumber");
-                        if (numberController.text.toString().isEmpty) {
-                          Utils.showSnackbar(
-                            context,
-                            "info",
-                            "login_with_mobile_note",
-                            true,
-                          );
-                        } else {
-                          printLog("mobileNumber ==> $mobileNumber");
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) =>
-                                  OTPVerify(mobileNumber ?? ""),
-                            ),
-                          );
-                        }
-                      },
-                      borderRadius: BorderRadius.circular(30),
-                      child: Container(
-                        width: MediaQuery.of(context).size.width,
-                        height: 52,
-                        decoration: Utils.setGradLTRBGWithBorder(
-                          colorPrimary,
-                          colorPrimaryDark,
-                          transparent,
-                          30,
-                          0,
-                        ),
-                        alignment: Alignment.center,
-                        child: MyText(
-                          color: white,
-                          text: "login",
-                          multilanguage: true,
-                          fontsizeNormal: 17,
-                          fontsizeWeb: 19,
-                          fontweight: FontWeight.w700,
-                          maxline: 1,
-                          overflow: TextOverflow.ellipsis,
-                          textalign: TextAlign.center,
-                          fontstyle: FontStyle.normal,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-
-                    /* Privacy & TermsCondition link */
-                    if (strPrivacyAndTNC != null)
-                      Utils.htmlTexts(strPrivacyAndTNC),
-                    const SizedBox(height: 10),
-
-                    /* Or */
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Container(width: 80, height: 1, color: colorAccent),
-                        const SizedBox(width: 15),
-                        MyText(
-                          color: descTextColor,
-                          text: "or",
-                          multilanguage: true,
-                          fontsizeNormal: 14,
-                          fontsizeWeb: 16,
-                          fontweight: FontWeight.w500,
-                          maxline: 1,
-                          overflow: TextOverflow.ellipsis,
-                          textalign: TextAlign.center,
-                          fontstyle: FontStyle.normal,
-                        ),
-                        const SizedBox(width: 15),
-                        Container(width: 80, height: 1, color: colorAccent),
-                      ],
-                    ),
-                    const SizedBox(height: 25),
 
                     /* Google Login Button */
                     Container(
@@ -350,50 +212,9 @@ class LoginSocialState extends State<LoginSocial> {
                       ),
                     ),
 
-                    /* Apple Login Button */
-                    if (Platform.isIOS)
-                      Container(
-                        width: MediaQuery.of(context).size.width,
-                        height: 52,
-                        padding: const EdgeInsets.fromLTRB(25, 0, 25, 0),
-                        margin: const EdgeInsets.only(bottom: 15),
-                        decoration: BoxDecoration(
-                          color: white,
-                          borderRadius: BorderRadius.circular(26),
-                        ),
-                        alignment: Alignment.center,
-                        child: InkWell(
-                          onTap: () {
-                            printLog("Clicked on : ====> loginWith Apple");
-                            signInWithApple();
-                          },
-                          borderRadius: BorderRadius.circular(26),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              MyImage(
-                                width: 30,
-                                height: 30,
-                                imagePath: "ic_apple.png",
-                                fit: BoxFit.contain,
-                              ),
-                              const SizedBox(width: 30),
-                              MyText(
-                                color: black,
-                                text: "loginwithapple",
-                                fontsizeNormal: 14,
-                                fontsizeWeb: 16,
-                                multilanguage: true,
-                                fontweight: FontWeight.w600,
-                                maxline: 1,
-                                overflow: TextOverflow.ellipsis,
-                                textalign: TextAlign.center,
-                                fontstyle: FontStyle.normal,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
+                    /* Privacy & TermsCondition link */
+                    if (strPrivacyAndTNC != null)
+                      Utils.htmlTexts(strPrivacyAndTNC),
 
                     /* Facebook Login Button */
                     // Container(
@@ -521,17 +342,14 @@ class LoginSocialState extends State<LoginSocial> {
       mProfileImg = await Utils.saveImageInStorage(user.photoUrl ?? "");
       printLog('_gmailLogin mProfileImg ===> $mProfileImg');
 
-      /* Hide overlay before showing referral dialog */
+      /* Continue directly after Google authorization. */
       LoadingOverlay().hide();
       if (!mounted) return;
-      final referralCode = await Utils.showReferralDialog(context);
-      if (!mounted) return;
       LoadingOverlay().show(context);
-      checkAndNavigate(
+      await checkAndNavigate(
         user.email,
         user.displayName ?? "",
         "2",
-        referenceCode: referralCode,
       );
     } on FirebaseAuthException catch (e) {
       printLog('_gmailLogin Firebase Error Code ==> ${e.code.toString()}');
@@ -540,74 +358,6 @@ class LoginSocialState extends State<LoginSocial> {
       LoadingOverlay().hide();
     } on Exception catch (e) {
       printLog('_gmailLogin Exception ==> $e');
-      if (!mounted) return;
-      LoadingOverlay().hide();
-    }
-  }
-
-  /* Apple Login */
-  Future<void> signInWithApple() async {
-    final rawNonce = generateNonce();
-    final nonce = Utils.sha256ofString(rawNonce);
-
-    try {
-      final appleCredential = await SignInWithApple.getAppleIDCredential(
-        scopes: [
-          AppleIDAuthorizationScopes.email,
-          AppleIDAuthorizationScopes.fullName,
-        ],
-        nonce: nonce,
-      );
-
-      final oauthCredential = OAuthProvider("apple.com").credential(
-        idToken: appleCredential.identityToken,
-        rawNonce: rawNonce,
-        accessToken: appleCredential.authorizationCode,
-      );
-
-      if (!mounted) return;
-      LoadingOverlay().show(context);
-
-      String? displayName;
-      final authResult = await _auth.signInWithCredential(oauthCredential);
-      final firebaseUser = authResult.user;
-
-      dynamic firebasedId;
-      if (appleCredential.givenName != null) {
-        displayName =
-            '${appleCredential.givenName} ${appleCredential.familyName}';
-        userEmail = authResult.user?.email.toString() ?? "";
-
-        await firebaseUser?.updateDisplayName(displayName);
-
-        printLog("===>userEmail $userEmail");
-        printLog("===>displayName $displayName");
-      } else {
-        userEmail = firebaseUser?.email.toString() ?? "";
-        firebasedId = firebaseUser?.uid.toString();
-        displayName = firebaseUser?.displayName.toString();
-
-        printLog("===>userEmail-else $userEmail");
-        printLog("===>displayName-else $displayName");
-      }
-      printLog("userEmail =====FINAL==> $userEmail");
-      printLog("firebasedId ===FINAL==> $firebasedId");
-      printLog("displayName ===FINAL==> $displayName");
-
-      /* Hide overlay before showing referral dialog */
-      LoadingOverlay().hide();
-      if (!mounted) return;
-      final referralCode = await Utils.showReferralDialog(context);
-      if (!mounted) return;
-      LoadingOverlay().show(context);
-      checkAndNavigate(
-        userEmail,
-        ((displayName ?? "").contains("null")) ? "" : (displayName ?? ""),
-        "3",
-        referenceCode: referralCode,
-      );
-    } catch (exception) {
-      printLog("Apple Login exception =====> $exception");
       if (!mounted) return;
       LoadingOverlay().hide();
     }
