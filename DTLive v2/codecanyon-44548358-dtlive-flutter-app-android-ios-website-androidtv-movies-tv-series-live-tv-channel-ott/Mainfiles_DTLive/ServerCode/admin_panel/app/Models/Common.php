@@ -332,7 +332,11 @@ class Common extends Model
         // presigned responses. Route cloud media through our same-origin
         // range endpoint unless a public/custom media domain was configured.
         // The endpoint keeps the bucket private and supports browser seeking.
-        if (filter_var(config('filesystems.media_proxy', true), FILTER_VALIDATE_BOOLEAN)) {
+        // If no public base exists, force the proxy even when an old .env
+        // still says media_proxy=false; otherwise every card performs a
+        // remote HEAD before the API can return, which makes the Flutter
+        // client's short receive timeout render the homepage as empty.
+        if ($publicBase === '' || filter_var(config('filesystems.media_proxy', true), FILTER_VALIDATE_BOOLEAN)) {
             $base = rtrim((string) Config::get('app.image_url'), '/');
             if ($base === '') {
                 $base = rtrim(url('/api/media'), '/');
