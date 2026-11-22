@@ -15,22 +15,22 @@ mkdir -p "$(dirname "$LOCK_FILE")"
 exec 9>"$LOCK_FILE"
 flock -n 9 || exit 0
 
-worker_loop() {
-  local last_cleanup=0
+cleanup_loop() {
   while true; do
-    now="$(date +%s)"
-    if (( now - last_cleanup >= CLEANUP_INTERVAL_SECONDS )); then
-      exec 8>"$CLEANUP_LOCK_FILE"
-      if flock -n 8; then
-        "$PHP_BIN" artisan media:cleanup-staging \
-          --older-than="$STAGING_TTL_SECONDS" \
-          --active-max-age="$STAGING_ACTIVE_TTL_SECONDS" \
-          >> "$APP_DIR/storage/logs/media-staging-cleanup.log" 2>&1 || true
-      fi
-      exec 8>&-
-      last_cleanup="$now"
+    exec 8>"$CLEANUP_LOCK_FILE"
+    if flock -n 8; then
+      "$PHP_BIN" artisan media:cleanup-staging \
+        --older-than="$STAGING_TTL_SECONDS" \
+        --active-max-age="$STAGING_ACTIVE_TTL_SECONDS" \
+        >> "$APP_DIR/storage/logs/media-staging-cleanup.log" 2>&1 || true
     fi
+    exec 8>&-
+    sleep "$CLEANUP_INTERVAL_SECONDS"
+  done
+}
 
+worker_loop() {
+  while true; do
     "$PHP_BIN" artisan queue:work database \
       --queue=media-video \
       --sleep=1 \
@@ -42,6 +42,10 @@ worker_loop() {
     sleep 2
   done
 }
+
+cleanup_loop &
+CLEANUP_PID=$!
+trap 'kill "$CLEANUP_PID" 2>/dev/null || true' EXIT INT TERM
 
 for index in $(seq 1 "$WORKER_COUNT"); do
   worker_loop &
