@@ -152,9 +152,10 @@
         const total = queue.length;
         const completed = queue.filter(function (item) { return item.status === 'uploaded'; }).length;
         const failed = queue.filter(function (item) { return item.status === 'failed'; }).length;
+        const saved = queue.filter(function (item) { return item.saved; }).length;
         $('#bulk_video_empty').toggle(total === 0);
         $('#bulk_video_summary').text(total
-            ? completed + ' of ' + total + ' uploaded' + (failed ? ' · ' + failed + ' failed' : '')
+            ? (saving ? saved + ' of ' + total + ' saved · processing one video at a time' : completed + ' of ' + total + ' uploaded') + (failed ? ' · ' + failed + ' failed' : '')
             : 'No files selected');
 
         queue.forEach(function (item) {
@@ -334,26 +335,39 @@
 
         saving = true;
         renderQueue();
-        const body = new FormData();
-        body.append('_token', config.csrf);
-        body.append('title', title);
-        body.append('type_id', config.typeId);
-        body.append('category_id', categoryId);
-        body.append('language_id', languageId);
-        queue.forEach(function (item) { body.append('upload_ids[]', item.uploadId); });
         $('#dvloader').show();
 
         try {
-            // A batch may need several minutes while the server creates
-            // browser-compatible variants for large videos. Let PHP finish
-            // and return the committed result instead of aborting at 120s.
-            const response = await request(config.saveUrl, body, null, 0);
+            // Finalize each video in its own request. A large batch no longer
+            // depends on one HTTP request surviving every transcode. The
+            // server's per-upload receipt makes retrying safe if the response
+            // is lost after a video has already been committed.
+            for (let index = 0; index < queue.length; index++) {
+                const item = queue[index];
+                if (item.saved) continue;
+                item.label = 'Processing video ' + (index + 1) + ' of ' + queue.length;
+                item.error = '';
+                renderQueue();
+
+                const body = new FormData();
+                body.append('_token', config.csrf);
+                body.append('title', title);
+                body.append('type_id', config.typeId);
+                body.append('category_id', categoryId);
+                body.append('language_id', languageId);
+                body.append('upload_ids[]', item.uploadId);
+                await request(config.saveUrl, body, null, 0);
+                item.saved = true;
+                item.label = 'Saved';
+                renderQueue();
+            }
             $('#dvloader').hide();
-            toastr.success(response.success || 'Videos saved successfully.');
+            toastr.success(queue.length + ' videos saved successfully.');
             window.setTimeout(function () { window.location.replace(config.indexUrl); }, 500);
         } catch (error) {
             $('#dvloader').hide();
-            toastr.error(error.message || 'Unable to save the batch. Uploaded files are ready to retry.');
+            const saved = queue.filter(function (item) { return item.saved; }).length;
+            toastr.error((error.message || 'Unable to save the next video.') + ' ' + saved + ' of ' + queue.length + ' are saved. Click Save batch to safely continue.');
             saving = false;
             renderQueue();
         }

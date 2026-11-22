@@ -90,7 +90,7 @@
                             <div class="form-group mb-0">
                                 <label for="bulk_video_files">Choose MP4 videos <span class="text-danger">*</span></label>
                                 <input type="file" id="bulk_video_files" class="form-control" accept=".mp4,video/mp4" multiple>
-                                <small class="form-text text-muted">A preview frame is captured from each video automatically. Uploads then run one file at a time; keep this page open until the batch is ready to save.</small>
+                                <small class="form-text text-muted">Uploads run one file at a time. Each video is processed and saved separately, so a later failure does not undo videos already saved. Keep this page open until the queue finishes.</small>
                             </div>
                         </div>
                     </div>

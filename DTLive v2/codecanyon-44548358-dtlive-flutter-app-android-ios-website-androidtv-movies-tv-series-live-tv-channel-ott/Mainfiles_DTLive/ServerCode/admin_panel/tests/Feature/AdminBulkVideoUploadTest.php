@@ -111,6 +111,28 @@ class AdminBulkVideoUploadTest extends TestCase
         $this->assertSame(60, Video::where('name', 'Shared batch title')->count());
     }
 
+    public function test_it_can_finalize_a_large_upload_queue_one_video_at_a_time_and_retry_safely(): void
+    {
+        $uploadIds = [
+            $this->uploadMp4('queue-first.mp4', $this->validMp4('first queued video')),
+            $this->uploadMp4('queue-second.mp4', $this->validMp4('second queued video')),
+            $this->uploadMp4('queue-third.mp4', $this->validMp4('third queued video')),
+        ];
+
+        foreach ($uploadIds as $uploadId) {
+            $payload = $this->batchPayload([$uploadId]);
+            $this->postJson(route('admin.video.bulk.save'), $payload)
+                ->assertOk()->assertJson(['status' => 200, 'count' => 1]);
+        }
+
+        // If a response is lost after the server committed a file, retrying
+        // that file must return its receipt instead of creating a duplicate.
+        $this->postJson(route('admin.video.bulk.save'), $this->batchPayload([$uploadIds[1]]))
+            ->assertOk()->assertJson(['status' => 200, 'count' => 1]);
+
+        $this->assertSame(3, Video::count());
+    }
+
     public function test_it_uses_the_configured_s3_storage_disk(): void
     {
         Storage::fake('s3');
@@ -150,7 +172,7 @@ class AdminBulkVideoUploadTest extends TestCase
         $this->assertSame(0, Video::count());
     }
 
-    public function test_it_requires_a_valid_preview_image_before_saving(): void
+    public function test_it_fails_cleanly_when_the_server_cannot_generate_a_missing_preview(): void
     {
         $init = $this->postJson(route('admin.video.bulk.init'), [
             'upload_name' => 'no-poster.mp4', 'file_size' => strlen($this->validMp4('video')),
@@ -164,7 +186,7 @@ class AdminBulkVideoUploadTest extends TestCase
             'chunk' => UploadedFile::fake()->createWithContent('no-poster.mp4', $contents),
         ], ['Accept' => 'application/json'])->assertOk();
 
-        $this->postJson(route('admin.video.bulk.save'), $this->batchPayload([$uploadId]))->assertUnprocessable();
+        $this->postJson(route('admin.video.bulk.save'), $this->batchPayload([$uploadId]))->assertStatus(400);
         $this->post(route('admin.video.bulk.thumbnail'), [
             'upload_id' => $uploadId,
             'thumbnail' => UploadedFile::fake()->createWithContent('invalid.jpg', 'not an image'),
