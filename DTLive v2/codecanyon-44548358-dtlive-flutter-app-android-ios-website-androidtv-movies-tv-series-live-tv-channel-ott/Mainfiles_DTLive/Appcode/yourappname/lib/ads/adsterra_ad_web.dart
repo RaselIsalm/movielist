@@ -32,10 +32,19 @@ class _AdsterraAdState extends State<AdsterraAd> {
     super.initState();
     _viewType = 'adsterra-${widget.unit.name}-${_nextViewId++}';
     ui_web.platformViewRegistry.registerViewFactory(_viewType, (viewId) {
+      final elementWidth = switch (widget.unit) {
+        AdsterraUnit.banner300x250 => '300px',
+        AdsterraUnit.banner320x50 => '320px',
+        AdsterraUnit.nativeBanner => '100%',
+      };
+      final elementHeight = switch (widget.unit) {
+        AdsterraUnit.banner300x250 => '250px',
+        AdsterraUnit.banner320x50 => '50px',
+        AdsterraUnit.nativeBanner => '280px',
+      };
       final element = html.DivElement()
-        ..style.width = '100%'
-        ..style.height = '100%'
-        ..style.minHeight = '1px'
+        ..style.width = elementWidth
+        ..style.height = elementHeight
         ..style.display = 'flex'
         ..style.justifyContent = 'center'
         ..style.alignItems = 'center';
