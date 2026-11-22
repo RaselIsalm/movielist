@@ -54,6 +54,7 @@ class MigrateLocalMediaToR2 extends Command
         $summary = [
             'local_objects_checked' => 0,
             'objects_uploaded' => 0,
+            'objects_reused' => 0,
             'objects_verified' => 0,
             'objects_missing' => 0,
             'objects_failed' => 0,
@@ -79,17 +80,30 @@ class MigrateLocalMediaToR2 extends Command
                     $object['status'] = 'would_upload';
                     $verified[$path] = true;
                 } else {
-                    $stream = $source->readStream($path);
-                    if ($stream === false || !$target->put($path, $stream, ['visibility' => 'private'])) {
+                    $remoteIsCurrent = false;
+                    try {
+                        $remoteIsCurrent = $target->exists($path)
+                            && (int) $target->size($path) === $localSize;
+                    } catch (Throwable) {
+                        $remoteIsCurrent = false;
+                    }
+
+                    if ($remoteIsCurrent) {
+                        $object['status'] = 'reused';
+                        $summary['objects_reused']++;
+                    } else {
+                        $stream = $source->readStream($path);
+                        if ($stream === false || !$target->put($path, $stream, ['visibility' => 'private'])) {
+                            if (is_resource($stream)) {
+                                fclose($stream);
+                            }
+                            throw new \RuntimeException('R2 upload returned false.');
+                        }
                         if (is_resource($stream)) {
                             fclose($stream);
                         }
-                        throw new \RuntimeException('R2 upload returned false.');
+                        $summary['objects_uploaded']++;
                     }
-                    if (is_resource($stream)) {
-                        fclose($stream);
-                    }
-                    $summary['objects_uploaded']++;
                     $remoteSize = (int) $target->size($path);
                     $remoteHash = $this->hashStream($target->readStream($path));
                     if ($remoteSize !== $localSize || !hash_equals($localHash, $remoteHash)) {
