@@ -34,6 +34,8 @@ class _AdsterraAdState extends State<AdsterraAd> {
     ui_web.platformViewRegistry.registerViewFactory(_viewType, (viewId) {
       final element = html.DivElement()
         ..style.width = '100%'
+        ..style.height = '100%'
+        ..style.minHeight = '1px'
         ..style.display = 'flex'
         ..style.justifyContent = 'center'
         ..style.alignItems = 'center';
