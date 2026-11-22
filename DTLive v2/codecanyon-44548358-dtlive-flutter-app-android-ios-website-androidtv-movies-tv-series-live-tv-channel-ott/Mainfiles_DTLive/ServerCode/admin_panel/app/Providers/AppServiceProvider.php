@@ -38,6 +38,8 @@ class AppServiceProvider extends ServiceProvider
         });
 
         if ($storage) {
+            $s3Endpoint = trim((string) ($storage['s3_endpoint'] ?? ''));
+
             // AWS S3
             Config::set('filesystems.disks.s3', [
                 'driver' => 's3',
@@ -45,7 +47,12 @@ class AppServiceProvider extends ServiceProvider
                 'secret' => $storage['s3_secret_key'],
                 'region' => $storage['s3_region'],
                 'bucket' => $storage['s3_bucket_name'],
-                'use_path_style_endpoint' => false,
+                // Cloudflare R2 is S3-compatible and requires its endpoint
+                // to be passed to the runtime client (the admin setting is
+                // stored in s3_endpoint). Path-style addressing is reliable
+                // with R2's S3 endpoint and keeps bucket routing explicit.
+                'endpoint' => $s3Endpoint !== '' ? rtrim($s3Endpoint, '/') : null,
+                'use_path_style_endpoint' => $s3Endpoint !== '',
             ]);
 
             // Wasabi
