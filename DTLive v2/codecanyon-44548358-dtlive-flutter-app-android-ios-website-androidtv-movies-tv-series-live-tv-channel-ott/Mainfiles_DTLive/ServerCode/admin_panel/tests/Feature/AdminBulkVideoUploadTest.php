@@ -172,7 +172,7 @@ class AdminBulkVideoUploadTest extends TestCase
         $this->assertSame(0, Video::count());
     }
 
-    public function test_it_fails_cleanly_when_the_server_cannot_generate_a_missing_preview(): void
+    public function test_it_saves_when_the_server_cannot_generate_a_missing_preview(): void
     {
         $init = $this->postJson(route('admin.video.bulk.init'), [
             'upload_name' => 'no-poster.mp4', 'file_size' => strlen($this->validMp4('video')),
@@ -186,12 +186,9 @@ class AdminBulkVideoUploadTest extends TestCase
             'chunk' => UploadedFile::fake()->createWithContent('no-poster.mp4', $contents),
         ], ['Accept' => 'application/json'])->assertOk();
 
-        $this->postJson(route('admin.video.bulk.save'), $this->batchPayload([$uploadId]))->assertStatus(400);
-        $this->post(route('admin.video.bulk.thumbnail'), [
-            'upload_id' => $uploadId,
-            'thumbnail' => UploadedFile::fake()->createWithContent('invalid.jpg', 'not an image'),
-        ], ['Accept' => 'application/json'])->assertUnprocessable();
-        $this->assertSame(0, Video::count());
+        $this->postJson(route('admin.video.bulk.save'), $this->batchPayload([$uploadId]))
+            ->assertOk()->assertJson(['status' => 200, 'count' => 1]);
+        $this->assertSame(1, Video::count());
     }
 
     public function test_it_rejects_missing_metadata_and_inactive_category_ids(): void

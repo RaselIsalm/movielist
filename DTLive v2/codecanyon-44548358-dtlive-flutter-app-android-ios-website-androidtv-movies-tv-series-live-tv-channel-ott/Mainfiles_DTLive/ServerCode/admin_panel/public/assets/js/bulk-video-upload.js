@@ -356,7 +356,7 @@
                 body.append('category_id', categoryId);
                 body.append('language_id', languageId);
                 body.append('upload_ids[]', item.uploadId);
-                await request(config.saveUrl, body, null, 0);
+                await request(config.saveUrl, body, null, 300000);
                 item.saved = true;
                 item.label = 'Saved';
                 renderQueue();

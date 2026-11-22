@@ -25,6 +25,7 @@ use Exception;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 // Video Type = 1- Movies, 2- TVShow, 3- Category, 4-Language, 5- Upcoming Content, 6- Channel Content, 7- Kids Content, 8- Shorts
@@ -629,12 +630,17 @@ class VideoController extends Controller
                 $item['filename'] = $filename;
                 $item['target_path'] = $targetPath;
 
-                $qualityVariants = $this->common->prepareVideoVariants([
+                // Do not transcode every quality variant inside the HTTP
+                // save request. A 50-file batch would otherwise run ffmpeg
+                // serially and leave the Save button spinning for minutes.
+                // The uploaded H.264/MP4 remains the canonical 320p stream;
+                // higher variants can be generated later by a queue/repair job.
+                $qualityVariants = [
                     'video_320' => $filename,
                     'video_480' => '',
                     'video_720' => '',
                     'video_1080' => '',
-                ], $storageType);
+                ];
                 $item['filename'] = $qualityVariants['video_320'];
                 $item['video_480'] = $qualityVariants['video_480'];
                 $item['video_720'] = $qualityVariants['video_720'];
@@ -649,11 +655,24 @@ class VideoController extends Controller
                 $posterTargetPath = $this->folder_content . '/' . $posterFilename;
                 $savedPaths[] = $posterTargetPath;
                 if (!is_file($item['poster_path'])) {
-                    app(\App\Services\VideoTranscoder::class)->createPoster(
-                        $item['path'],
-                        $this->bulkUploadDirectory($item['id']) . DIRECTORY_SEPARATOR . $item['id'] . '.poster.jpg'
-                    );
-                    $item['poster_path'] = $this->bulkUploadDirectory($item['id']) . DIRECTORY_SEPARATOR . $item['id'] . '.poster.jpg';
+                    // Preview generation must never prevent a completed video
+                    // from being saved. HEVC and very large files can make
+                    // ffmpeg unavailable or take longer than the web request.
+                    // Keep a valid placeholder and let the missing-preview
+                    // repair tool generate the real frame later.
+                    try {
+                        app(\App\Services\VideoTranscoder::class)->createPoster(
+                            $item['path'],
+                            $this->bulkUploadDirectory($item['id']) . DIRECTORY_SEPARATOR . $item['id'] . '.poster.jpg'
+                        );
+                        $item['poster_path'] = $this->bulkUploadDirectory($item['id']) . DIRECTORY_SEPARATOR . $item['id'] . '.poster.jpg';
+                    } catch (\Throwable $previewException) {
+                        Log::warning('Bulk video preview generation skipped; using placeholder.', [
+                            'upload' => $item['upload']['name'],
+                            'error' => $previewException->getMessage(),
+                        ]);
+                        $item['poster_path'] = public_path('assets/imgs/no_img.png');
+                    }
                 }
                 $posterStream = fopen($item['poster_path'], 'rb');
                 if ($posterStream === false) {

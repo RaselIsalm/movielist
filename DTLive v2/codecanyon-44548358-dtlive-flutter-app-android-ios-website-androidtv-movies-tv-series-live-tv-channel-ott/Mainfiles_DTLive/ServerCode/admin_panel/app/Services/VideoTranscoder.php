@@ -177,7 +177,10 @@ class VideoTranscoder
             '-q:v', '3',
             $outputPath,
         ]);
-        $process->setTimeout((int) config('video.transcoding.timeout', 900));
+        // Poster extraction is a best-effort enhancement during a web
+        // request. Keep a hard bound so one problematic/large upload cannot
+        // hold the whole bulk-save request open indefinitely.
+        $process->setTimeout(min((int) config('video.transcoding.preview_timeout', 60), 60));
         $process->run();
 
         if (!$process->isSuccessful() || !is_file($outputPath) || filesize($outputPath) < 256) {
