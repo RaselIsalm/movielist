@@ -30,7 +30,7 @@
                 </div>
             </div>
 
-            <form id="edit_video" enctype="multipart/form-data">
+            <form id="edit_video" method="POST" action="{{ route('admin.video.update', [$data->id]) }}" enctype="multipart/form-data">
                 <input type="hidden" name="id" value="{{ $data->id }}">
                 <input type="hidden" name="video_type" value="{{ $type->type }}">
                 <input type="hidden" name="old_thumbnail" value="{{ $data->thumbnail }}">
@@ -706,6 +706,9 @@
                 type: 'POST',
                 url: '{{route("admin.video.update", [$data->id])}}',
                 data: formData,
+                headers: {
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                },
                 cache: false,
                 contentType: false,
                 processData: false,
@@ -715,7 +718,21 @@
                 },
                 error: function(XMLHttpRequest, textStatus, errorThrown) {
                     $("#dvloader").hide();
-                    toastr.error(errorThrown, textStatus);
+                    var response = XMLHttpRequest.responseJSON || {};
+                    if (Array.isArray(response.errors)) {
+                        response.errors.forEach(function(message) {
+                            toastr.error(message);
+                        });
+                    } else if (response.errors && typeof response.errors === 'object') {
+                        Object.keys(response.errors).forEach(function(key) {
+                            var messages = Array.isArray(response.errors[key]) ? response.errors[key] : [response.errors[key]];
+                            messages.forEach(function(message) {
+                                toastr.error(message);
+                            });
+                        });
+                    } else {
+                        toastr.error(response.message || errorThrown || textStatus, textStatus);
+                    }
                 }
             });
         }
