@@ -18,4 +18,4 @@ fi
 
 cd "$APP_DIR"
 flutter pub get
-flutter build web --release --dart-define-from-file="$CONFIG_FILE"
+flutter build web --release --no-wasm-dry-run --dart-define-from-file="$CONFIG_FILE"

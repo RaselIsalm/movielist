@@ -71,7 +71,7 @@ jobs:
           cd "$APP_DIR"
           flutter pub get
           BASE_HREF="/${GITHUB_REPOSITORY#*/}/"
-          flutter build web --release --base-href "$BASE_HREF" --dart-define-from-file="$CONFIG_FILE"
+          flutter build web --release --no-wasm-dry-run --base-href "$BASE_HREF" --dart-define-from-file="$CONFIG_FILE"
           echo "APP_DIR=$APP_DIR" >> "$GITHUB_ENV"
 
       - name: Upload Pages artifact
