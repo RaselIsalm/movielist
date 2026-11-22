@@ -374,7 +374,11 @@
     }
 
     $(function () {
-        $('#bulk_video_category, #bulk_video_language').select2({ width: '100%' });
+        // Select2 is loaded from a third-party CDN on this page. The upload
+        // queue must still initialize when that CDN is unavailable.
+        if ($.fn.select2) {
+            $('#bulk_video_category, #bulk_video_language').select2({ width: '100%' });
+        }
         $('#show_bulk_video_mode').on('click', function () {
             $section.show();
             $('#save_video').hide();
