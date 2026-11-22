@@ -148,7 +148,9 @@
         });
     }
 
-    function renderQueue() {
+    let renderTimer = null;
+
+    function renderQueueNow() {
         const $list = $('#bulk_video_file_list').empty();
         const total = queue.length;
         const completed = queue.filter(function (item) { return item.status === 'uploaded'; }).length;
@@ -210,6 +212,14 @@
             && $('#bulk_video_language').val();
         $('#save_bulk_videos').prop('disabled', saving || uploading || !total || completed !== total || !hasMetadata);
         $('#bulk_video_files').prop('disabled', saving);
+    }
+
+    function renderQueue() {
+        if (renderTimer !== null) return;
+        renderTimer = window.setTimeout(function () {
+            renderTimer = null;
+            renderQueueNow();
+        }, 50);
     }
 
     async function uploadItem(item) {
