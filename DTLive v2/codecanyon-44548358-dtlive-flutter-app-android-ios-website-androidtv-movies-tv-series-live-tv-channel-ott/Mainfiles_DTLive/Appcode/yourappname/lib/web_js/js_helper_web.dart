@@ -49,15 +49,21 @@ class JSHelper {
   }
 
   Future<void> callBrowserFullscreen(bool isFullscreen) async {
-    if (isFullscreen) {
-      final element = document.documentElement;
-      if (element != null) {
-        await element.requestFullscreen().toDart;
+    try {
+      if (isFullscreen) {
+        final element = document.documentElement;
+        if (element != null) {
+          await element.requestFullscreen().toDart;
+        }
+      } else {
+        if (document.fullscreenElement != null) {
+          await document.exitFullscreen().toDart;
+        }
       }
-    } else {
-      if (document.fullscreenElement != null) {
-        await document.exitFullscreen().toDart;
-      }
+    } catch (e) {
+      // Fullscreen is unavailable in some embedded/mobile browsers. Keep the
+      // player usable instead of surfacing an unhandled JS promise error.
+      printLog("Browser fullscreen unavailable: $e");
     }
   }
 

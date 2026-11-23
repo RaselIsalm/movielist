@@ -1113,11 +1113,11 @@ class _PlayerVideoState extends State<PlayerVideo>
   }
 
   // [WEB-2] Toggle browser fullscreen independently of BoxFit state
-  void _toggleWebFullscreen() {
+  Future<void> _toggleWebFullscreen() async {
     if (!kIsWeb) return;
-    _isWebFullscreen = !_isWebFullscreen;
-    _jsHelper.callBrowserFullscreen(_isWebFullscreen);
-    if (mounted) setState(() {});
+    final nextFullscreen = !_isWebFullscreen;
+    await _jsHelper.callBrowserFullscreen(nextFullscreen);
+    if (mounted) setState(() => _isWebFullscreen = nextFullscreen);
     _startHideTimer();
   }
 
@@ -1460,11 +1460,20 @@ class _PlayerVideoState extends State<PlayerVideo>
                     ? null
                     : kIsWeb // [WEB-1]
                     ? () async {
-                        // Web: single tap = play/pause (controls always via hover)
                         if (!_isControllerReady || !_shouldShowContentVideo) {
                           return;
                         }
                         if (_isAdActuallyPlaying) return;
+
+                        // Touch devices do not have a hover event. The first
+                        // tap reveals the controls so fullscreen and seek
+                        // actions remain reachable; the next tap toggles
+                        // playback.
+                        if (!_showControls) {
+                          _showControlsAnimated();
+                          return;
+                        }
+
                         _videoPlayerController.value.isPlaying
                             ? await _videoPlayerController.pause()
                             : await _videoPlayerController.play();
@@ -1544,6 +1553,14 @@ class _PlayerVideoState extends State<PlayerVideo>
                   body: kIsWeb
                       ? LayoutBuilder(
                           builder: (context, constraints) {
+                            // Browser fullscreen belongs to the player only;
+                            // the banner stays outside this surface.
+                            if (_isWebFullscreen) {
+                              return SizedBox.expand(
+                                child: _buildPlayerSurface(),
+                              );
+                            }
+
                             if (constraints.maxWidth >= 700) {
                               return Column(
                                 children: [
@@ -1555,15 +1572,23 @@ class _PlayerVideoState extends State<PlayerVideo>
                                 ],
                               );
                             }
+
+                            // On mobile, keep the player as tall as the
+                            // viewport. Rotating the device changes these
+                            // constraints, so portrait and landscape both
+                            // receive a full player surface. The compact
+                            // banner remains immediately below it.
+                            final playerHeight = constraints.hasBoundedHeight &&
+                                    constraints.maxHeight > 0
+                                ? constraints.maxHeight
+                                : constraints.maxWidth * 9 / 16;
                             return SingleChildScrollView(
                               child: Column(
                                 children: [
                                   SizedBox(
                                     width: constraints.maxWidth,
-                                    child: AspectRatio(
-                                      aspectRatio: 16 / 9,
-                                      child: _buildPlayerSurface(),
-                                    ),
+                                    height: playerHeight,
+                                    child: _buildPlayerSurface(),
                                   ),
                                   const AdsterraAd(
                                     unit: AdsterraUnit.banner320x50,
