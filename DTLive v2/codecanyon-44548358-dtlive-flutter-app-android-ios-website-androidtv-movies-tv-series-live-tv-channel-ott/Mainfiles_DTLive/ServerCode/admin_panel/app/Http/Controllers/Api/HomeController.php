@@ -1090,16 +1090,16 @@ class HomeController extends Controller
             if ($is_home_screen == 1) {
 
                 if ($parent_control_status == 1) {
-                    $banner_data = Banner::where('is_home_screen', 1)->where('video_type', 7)->orderBy('sort_order', 'asc')->latest()->get();
+                    $banner_data = Banner::where('is_home_screen', 1)->where('video_type', 7)->orderBy('sort_order', 'asc')->latest()->limit(8)->get();
                 } else {
-                    $banner_data = Banner::where('is_home_screen', 1)->orderBy('sort_order', 'asc')->latest()->get();
+                    $banner_data = Banner::where('is_home_screen', 1)->orderBy('sort_order', 'asc')->latest()->limit(8)->get();
                 }
             } elseif ($is_home_screen == 2) {
 
                 if ($parent_control_status == 1) {
-                    $banner_data = Banner::where('is_home_screen', 2)->where('video_type', 7)->where('type_id', $type_id)->orderBy('sort_order', 'asc')->latest()->get();
+                    $banner_data = Banner::where('is_home_screen', 2)->where('video_type', 7)->where('type_id', $type_id)->orderBy('sort_order', 'asc')->latest()->limit(8)->get();
                 } else {
-                    $banner_data = Banner::where('is_home_screen', 2)->where('type_id', $type_id)->orderBy('sort_order', 'asc')->latest()->get();
+                    $banner_data = Banner::where('is_home_screen', 2)->where('type_id', $type_id)->orderBy('sort_order', 'asc')->latest()->limit(8)->get();
                 }
             } else {
                 return $this->common->API_Response(400, __('api_msf.data_not_found'));

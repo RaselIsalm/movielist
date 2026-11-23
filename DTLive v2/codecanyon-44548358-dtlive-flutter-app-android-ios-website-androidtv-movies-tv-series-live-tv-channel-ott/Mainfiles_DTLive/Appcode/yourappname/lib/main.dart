@@ -116,9 +116,15 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 }
 
 Future<void> _initializeFirebaseServices() async {
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  if (!kIsWeb) {
-    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+  try {
+    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+    if (!kIsWeb) {
+      FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+    }
+  } catch (error) {
+    // Firebase is an optional enhancement for the first frame. A missing or
+    // stale web configuration must never leave the catalog in a loading state.
+    printLog("Firebase initialization skipped: $error");
   }
 }
 
@@ -246,13 +252,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     getAppVersion();
     _getUserData();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (kIsWeb) {
-        unawaited(
-          firebaseServicesReady.then((_) {
-            if (mounted) PushNotificationService().setupInteractedMessage(context);
-          }).catchError((_) {}),
-        );
-      } else {
+      if (!kIsWeb) {
         await firebaseServicesReady;
         if (!mounted) return;
         PushNotificationService().setupInteractedMessage(context);

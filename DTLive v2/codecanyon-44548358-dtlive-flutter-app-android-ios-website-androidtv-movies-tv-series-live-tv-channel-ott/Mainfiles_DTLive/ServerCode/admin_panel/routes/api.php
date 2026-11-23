@@ -74,10 +74,38 @@ Route::get('media/{folder}/{filename}', function (Request $request, string $fold
         ]);
     }
 
-    abort_unless($disk->exists($path), 404);
-    $size = (int) $disk->size($path);
+    // The three filesystem calls previously used here (`exists`, `size`, and
+    // `lastModified`) each perform a separate remote HEAD against R2. That
+    // added several seconds before every video could even start buffering.
+    // Read the object metadata once and reuse the same S3 client for the
+    // requested byte range below.
+    $adapter = $disk->getAdapter();
+    $client = method_exists($adapter, 'getClient') ? $adapter->getClient() : null;
+    $bucket = $disk->getConfig()['bucket'] ?? null;
+    $head = null;
+    if ($client !== null && $bucket !== null && $bucket !== '') {
+        try {
+            $head = $client->headObject([
+                'Bucket' => $bucket,
+                'Key' => $path,
+            ]);
+        } catch (\Throwable $exception) {
+            abort(404);
+        }
+    }
+
+    if ($head !== null) {
+        $size = (int) ($head['ContentLength'] ?? 0);
+        $lastModifiedValue = $head['LastModified'] ?? null;
+        $lastModified = is_object($lastModifiedValue) && method_exists($lastModifiedValue, 'getTimestamp')
+            ? (int) $lastModifiedValue->getTimestamp()
+            : (int) ($lastModifiedValue ?? 0);
+    } else {
+        abort_unless($disk->exists($path), 404);
+        $size = (int) $disk->size($path);
+        $lastModified = (int) $disk->lastModified($path);
+    }
     abort_unless($size > 0, 404);
-    $lastModified = (int) $disk->lastModified($path);
     $etag = '"' . md5($diskName . ':' . $path . ':' . $size . ':' . $lastModified) . '"';
     $cacheHeaders = [
         'Cache-Control' => 'public, max-age=31536000, immutable',
@@ -123,11 +151,9 @@ Route::get('media/{folder}/{filename}', function (Request $request, string $fold
     // avoids downloading a whole movie when a browser seeks near the end.
     $body = null;
     $stream = null;
-    $adapter = $disk->getAdapter();
-    if (method_exists($adapter, 'getClient')) {
-        $client = $adapter->getClient();
+    if ($client !== null && $bucket !== null && $bucket !== '') {
         $options = [
-            'Bucket' => $disk->getConfig()['bucket'],
+            'Bucket' => $bucket,
             'Key' => $path,
         ];
         if ($start !== 0 || $end !== $size - 1) {

@@ -293,8 +293,19 @@ class SectionDataProvider extends ChangeNotifier {
       notifyListeners();
       unawaited(_persistHomeCache());
 
-      // Individual rows fetch their bounded first page when they enter the
-      // viewport. This keeps distant sections and cards out of the first load.
+      // VisibilityDetector is unreliable for sections inside the nested,
+      // shrink-wrapped home scroll view (especially on the web renderer). A
+      // section could therefore remain a shimmer forever because its first
+      // item request was never started. Fetch the first few rows immediately;
+      // later sections still remain lazy and are fetched when they approach
+      // the viewport.
+      final eagerSections = sectionList
+          ?.where((item) => item.id != null && (item.data?.isEmpty ?? true))
+          .take(kIsWeb ? 3 : 2)
+          .toList(growable: false);
+      for (final item in eagerSections ?? <section.Result>[]) {
+        unawaited(getFeedSectionItems(item));
+      }
     } on Exception catch (e) {
       printLog('getFeedSections Exception :==> $e');
       loadingSection = false;
