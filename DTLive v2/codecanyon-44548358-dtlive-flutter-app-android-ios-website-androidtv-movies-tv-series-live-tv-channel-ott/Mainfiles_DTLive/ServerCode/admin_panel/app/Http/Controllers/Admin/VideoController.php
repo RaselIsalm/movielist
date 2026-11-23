@@ -332,6 +332,7 @@ class VideoController extends Controller
         $validator = Validator::make($request->all(), [
             'upload_name' => 'required|string|max:255',
             'file_size' => 'required|integer|min:1',
+            'client_key' => 'nullable|string|max:100',
         ]);
         if ($validator->fails()) {
             return response()->json(['status' => 400, 'errors' => $validator->errors()->all()], 422);
@@ -340,6 +341,32 @@ class VideoController extends Controller
         $name = trim($request->input('upload_name'));
         if (strtolower(pathinfo($name, PATHINFO_EXTENSION)) !== 'mp4') {
             return response()->json(['status' => 400, 'errors' => ['Only MP4 video files are supported.']], 422);
+        }
+
+        // A browser may lose the response after the server has already
+        // created the staged upload. Reusing the receipt makes init retries
+        // idempotent and avoids orphaned R2 multipart sessions.
+        $clientKey = trim((string) $request->input('client_key'));
+        $uploads = session()->get('bulk_video_uploads', []);
+        if ($clientKey !== '') {
+            foreach ($uploads as $existingId => $existingUpload) {
+                if (!is_array($existingUpload)
+                    || (string) ($existingUpload['client_key'] ?? '') !== $clientKey
+                    || (int) ($existingUpload['size'] ?? -1) !== (int) $request->input('file_size')
+                    || basename((string) ($existingUpload['name'] ?? '')) !== basename($name)) {
+                    continue;
+                }
+
+                return response()->json([
+                    'status' => 200,
+                    'upload_id' => (string) $existingId,
+                    'chunk_size' => (int) ($existingUpload['chunk_size'] ?? 1024 * 1024),
+                    'direct_r2' => $this->browserDirectR2UploadsEnabled(),
+                    'part_url' => $this->browserDirectR2UploadsEnabled() ? route('admin.video.bulk.part-url') : null,
+                    'complete' => (bool) ($existingUpload['complete'] ?? false),
+                    'reused' => true,
+                ]);
+            }
         }
 
         // Creating hundreds of files must not scan the full staging tree for
@@ -367,6 +394,7 @@ class VideoController extends Controller
         $upload = [
             'name' => basename($name),
             'size' => (int) $request->input('file_size'),
+            'client_key' => $clientKey !== '' ? $clientKey : null,
             'chunk_size' => $this->directR2UploadsEnabled() ? 8 * 1024 * 1024 : 1024 * 1024,
             'chunk_count' => null,
             'complete' => false,
@@ -410,7 +438,6 @@ class VideoController extends Controller
                 ], 500);
             }
         }
-        $uploads = session()->get('bulk_video_uploads', []);
         $uploads[$uploadId] = $upload;
         session()->put('bulk_video_uploads', $uploads);
 

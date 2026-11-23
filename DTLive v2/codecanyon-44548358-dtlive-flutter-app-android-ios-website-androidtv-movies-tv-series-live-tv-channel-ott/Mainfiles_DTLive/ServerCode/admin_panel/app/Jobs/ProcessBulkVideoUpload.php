@@ -115,7 +115,7 @@ class ProcessBulkVideoUpload implements ShouldQueue, ShouldBeUnique
                 throw new Exception('The completed R2 video object is missing.');
             }
 
-            if ($directR2 && $diskName === 's3') {
+            if ($directR2 && $diskName === 's3' && filter_var(config('video.transcoding.fast_start_on_save', false), FILTER_VALIDATE_BOOLEAN)) {
                 // Browser multipart uploads arrive quickly, but their source
                 // may have the moov atom at the end. Repack once in the queue
                 // before publishing the catalog row, then overwrite the same
