@@ -11,7 +11,10 @@ class VideoByIDProvider extends ChangeNotifier {
   List<content.Result>? contentList = [];
 
   bool loading = false;
-  String? currentCatId, currentLangId, currentChannelId;
+  bool hasLoadError = false;
+  String? currentCatId, currentLangId, currentChannelId, currentCastId;
+  String? _currentContentFilterKey;
+  int _contentRequestGeneration = 0;
 
   /* Post Pagination */
   bool loadMore = false;
@@ -25,186 +28,150 @@ class VideoByIDProvider extends ChangeNotifier {
 
   Future<void> getCastDetails(dynamic castID) async {
     loading = true;
-    castDetailModel = await ApiService().getCastDetails(castID);
-    printLog("getCastDetails status :==> ${castDetailModel.status}");
-    loading = false;
+    hasLoadError = false;
     notifyListeners();
+    try {
+      castDetailModel = await ApiService().getCastDetails(castID);
+      printLog("getCastDetails status :==> ${castDetailModel.status}");
+      hasLoadError = castDetailModel.status != 200;
+    } on Exception catch (e) {
+      hasLoadError = true;
+      printLog("getCastDetails Exception :==> $e");
+    } finally {
+      loading = false;
+      notifyListeners();
+    }
   }
 
   Future<void> getVideoByCategory(dynamic categoryID, pageNo) async {
-    currentCatId = categoryID.toString();
+    _selectContentFilter('category', categoryID);
     notifyListeners();
     printLog("getVideoByCategory userID :======> ${Constant.userID}");
     printLog("getVideoByCategory categoryID :==> $categoryID");
     printLog("getVideoByCategory pageNo =======> $pageNo");
-    if (pageNo == 1) {
-      contentList = [];
-    }
-    loading = true;
-    contentByIdModel = content.ContentByIdModel();
-    contentByIdModel = await ApiService().contentByCategory(categoryID, pageNo);
-    printLog(
-        "contentByIdModel length :=1=> ${(contentByIdModel.result?.length ?? 0)}");
-    if (contentByIdModel.status == 200) {
-      setPagination(contentByIdModel.totalRows, contentByIdModel.totalPage,
-          contentByIdModel.currentPage, contentByIdModel.morePage);
-      if (contentByIdModel.result != null &&
-          (contentByIdModel.result?.length ?? 0) > 0) {
-        printLog(
-            "contentByIdModel length :=2=> ${(contentByIdModel.result?.length ?? 0)}");
-        for (var i = 0; i < (contentByIdModel.result?.length ?? 0); i++) {
-          contentList?.add(contentByIdModel.result?[i] ?? content.Result());
-        }
-        final Map<String, content.Result> postMap = {};
-        contentList?.forEach((item) {
-          final key =
-              '${item.id}-${item.typeId}-${item.videoType}-${item.subVideoType}';
-          postMap[key] = item;
-        });
-        contentList = postMap.values.toList();
-        setLoadMore(false);
-        printLog(
-            "contentByIdModel length :=3=> ${(contentByIdModel.result?.length ?? 0)}");
-      } else {
-        setLoadMore(false);
-      }
-    } else {
-      setLoadMore(false);
-    }
-    loading = false;
-    notifyListeners();
+    await _loadContentPage(
+      pageNo: pageNo,
+      label: 'getVideoByCategory',
+      request: () => ApiService().contentByCategory(categoryID, pageNo),
+    );
   }
 
   Future<void> getVideoByLanguage(dynamic languageID, pageNo) async {
-    currentLangId = languageID.toString();
+    _selectContentFilter('language', languageID);
     notifyListeners();
     printLog("getVideoByLanguage userID :======> ${Constant.userID}");
     printLog("getVideoByLanguage languageID :==> $languageID");
     printLog("getVideoByLanguage pageNo =======> $pageNo");
-    if (pageNo == 1) {
-      contentList = [];
-    }
-    loading = true;
-    contentByIdModel = content.ContentByIdModel();
-    contentByIdModel = await ApiService().contentByLanguage(languageID, pageNo);
-    printLog(
-        "contentByIdModel length :=1=> ${(contentByIdModel.result?.length ?? 0)}");
-    if (contentByIdModel.status == 200) {
-      setPagination(contentByIdModel.totalRows, contentByIdModel.totalPage,
-          contentByIdModel.currentPage, contentByIdModel.morePage);
-      if (contentByIdModel.result != null &&
-          (contentByIdModel.result?.length ?? 0) > 0) {
-        printLog(
-            "contentByIdModel length :=2=> ${(contentByIdModel.result?.length ?? 0)}");
-        for (var i = 0; i < (contentByIdModel.result?.length ?? 0); i++) {
-          contentList?.add(contentByIdModel.result?[i] ?? content.Result());
-        }
-        final Map<String, content.Result> postMap = {};
-        contentList?.forEach((item) {
-          final key =
-              '${item.id}-${item.typeId}-${item.videoType}-${item.subVideoType}';
-          postMap[key] = item;
-        });
-        contentList = postMap.values.toList();
-        setLoadMore(false);
-        printLog(
-            "contentByIdModel length :=3=> ${(contentByIdModel.result?.length ?? 0)}");
-      } else {
-        setLoadMore(false);
-      }
-    } else {
-      setLoadMore(false);
-    }
-    loading = false;
-    notifyListeners();
+    await _loadContentPage(
+      pageNo: pageNo,
+      label: 'getVideoByLanguage',
+      request: () => ApiService().contentByLanguage(languageID, pageNo),
+    );
   }
 
   Future<void> getVideoByChannel(dynamic channelID, pageNo) async {
-    currentChannelId = channelID.toString();
+    _selectContentFilter('channel', channelID);
     notifyListeners();
     printLog("getVideoByChannel userID :=====> ${Constant.userID}");
     printLog("getVideoByChannel channelID :==> $channelID");
     printLog("getVideoByChannel pageNo ======> $pageNo");
-    if (pageNo == 1) {
-      contentList = [];
-    }
-    loading = true;
-    contentByIdModel = content.ContentByIdModel();
-    contentByIdModel = await ApiService().contentByChannel(channelID, pageNo);
-    printLog(
-        "contentByIdModel length :=1=> ${(contentByIdModel.result?.length ?? 0)}");
-    if (contentByIdModel.status == 200) {
-      setPagination(contentByIdModel.totalRows, contentByIdModel.totalPage,
-          contentByIdModel.currentPage, contentByIdModel.morePage);
-      if (contentByIdModel.result != null &&
-          (contentByIdModel.result?.length ?? 0) > 0) {
-        printLog(
-            "contentByIdModel length :=2=> ${(contentByIdModel.result?.length ?? 0)}");
-        for (var i = 0; i < (contentByIdModel.result?.length ?? 0); i++) {
-          contentList?.add(contentByIdModel.result?[i] ?? content.Result());
-        }
-        final Map<String, content.Result> postMap = {};
-        contentList?.forEach((item) {
-          final key =
-              '${item.id}-${item.typeId}-${item.videoType}-${item.subVideoType}';
-          postMap[key] = item;
-        });
-        contentList = postMap.values.toList();
-        setLoadMore(false);
-        printLog(
-            "contentByIdModel length :=3=> ${(contentByIdModel.result?.length ?? 0)}");
-      } else {
-        setLoadMore(false);
-      }
-    } else {
-      setLoadMore(false);
-    }
-    loading = false;
-    notifyListeners();
+    await _loadContentPage(
+      pageNo: pageNo,
+      label: 'getVideoByChannel',
+      request: () => ApiService().contentByChannel(channelID, pageNo),
+    );
   }
 
   Future<void> getVideoByCast(dynamic castID, pageNo) async {
-    currentChannelId = castID.toString();
+    _selectContentFilter('cast', castID);
     notifyListeners();
     printLog("getVideoByCast userID :=====> ${Constant.userID}");
     printLog("getVideoByCast castID :=====> $castID");
     printLog("getVideoByCast pageNo ======> $pageNo");
-    if (pageNo == 1) {
-      contentList = [];
-    }
+    await _loadContentPage(
+      pageNo: pageNo,
+      label: 'getVideoByCast',
+      request: () => ApiService().contentByCast(castID, pageNo),
+    );
+  }
+
+  Future<void> _loadContentPage({
+    required dynamic pageNo,
+    required String label,
+    required Future<content.ContentByIdModel> Function() request,
+  }) async {
+    final isFirstPage = pageNo == 1;
+    final previousItems = List<content.Result>.from(
+      contentList ?? <content.Result>[],
+    );
+    final previousModel = contentByIdModel;
+    final requestGeneration = ++_contentRequestGeneration;
     loading = true;
-    contentByIdModel = content.ContentByIdModel();
-    contentByIdModel = await ApiService().contentByCast(castID, pageNo);
-    printLog(
-        "contentByIdModel length :=1=> ${(contentByIdModel.result?.length ?? 0)}");
-    if (contentByIdModel.status == 200) {
-      setPagination(contentByIdModel.totalRows, contentByIdModel.totalPage,
-          contentByIdModel.currentPage, contentByIdModel.morePage);
-      if (contentByIdModel.result != null &&
-          (contentByIdModel.result?.length ?? 0) > 0) {
-        printLog(
-            "contentByIdModel length :=2=> ${(contentByIdModel.result?.length ?? 0)}");
-        for (var i = 0; i < (contentByIdModel.result?.length ?? 0); i++) {
-          contentList?.add(contentByIdModel.result?[i] ?? content.Result());
-        }
-        final Map<String, content.Result> postMap = {};
-        contentList?.forEach((item) {
+    if (isFirstPage) hasLoadError = false;
+    notifyListeners();
+
+    try {
+      final fetched = await request();
+      if (requestGeneration != _contentRequestGeneration) return;
+      contentByIdModel = fetched;
+      printLog('$label result length :==> ${fetched.result?.length ?? 0}');
+      if (fetched.status == 200) {
+        hasLoadError = false;
+        setPagination(
+          fetched.totalRows,
+          fetched.totalPage,
+          fetched.currentPage,
+          fetched.morePage,
+        );
+        final mergedItems = <content.Result>[
+          if (!isFirstPage) ...previousItems,
+          ...?fetched.result,
+        ];
+        final postMap = <String, content.Result>{};
+        for (final item in mergedItems) {
           final key =
               '${item.id}-${item.typeId}-${item.videoType}-${item.subVideoType}';
           postMap[key] = item;
-        });
-        contentList = postMap.values.toList();
-        setLoadMore(false);
-        printLog(
-            "contentByIdModel length :=3=> ${(contentByIdModel.result?.length ?? 0)}");
+        }
+        contentList = postMap.values.toList(growable: true);
       } else {
-        setLoadMore(false);
+        hasLoadError = true;
+        contentByIdModel = previousModel;
+        contentList = previousItems;
       }
-    } else {
-      setLoadMore(false);
+    } on Exception catch (e) {
+      if (requestGeneration != _contentRequestGeneration) return;
+      hasLoadError = true;
+      contentByIdModel = previousModel;
+      contentList = previousItems;
+      printLog('$label Exception :==> $e');
+    } finally {
+      if (requestGeneration == _contentRequestGeneration) {
+        loadMore = false;
+        loading = false;
+        notifyListeners();
+      }
     }
-    loading = false;
-    notifyListeners();
+  }
+
+  void _selectContentFilter(String type, dynamic id) {
+    final value = id.toString();
+    final key = '$type:$value';
+    if (_currentContentFilterKey != key) {
+      _currentContentFilterKey = key;
+      contentByIdModel = content.ContentByIdModel();
+      contentList = [];
+      totalRows = null;
+      totalPage = null;
+      currentPage = null;
+      isMorePage = null;
+      hasLoadError = false;
+      _contentRequestGeneration++;
+    }
+    currentCatId = type == 'category' ? value : null;
+    currentLangId = type == 'language' ? value : null;
+    currentChannelId = type == 'channel' ? value : null;
+    currentCastId = type == 'cast' ? value : null;
   }
 
   void setLoadMore(bool loadMore) {
@@ -214,7 +181,11 @@ class VideoByIDProvider extends ChangeNotifier {
   }
 
   void setPagination(
-      int? totalRows, int? totalPage, int? currentPage, bool? morePage) {
+    int? totalRows,
+    int? totalPage,
+    int? currentPage,
+    bool? morePage,
+  ) {
     printLog("setPagination currentPage :==> $currentPage");
     printLog("setPagination totalRows :====> $totalRows");
     printLog("setPagination totalPage :====> $totalPage");
@@ -230,11 +201,19 @@ class VideoByIDProvider extends ChangeNotifier {
     printLog("<================ clearProvider ================>");
     contentByIdModel = content.ContentByIdModel();
     castDetailModel = CastDetailModel();
+    contentList = [];
     loading = false;
+    hasLoadError = false;
     loadMore = false;
     totalRows = null;
     totalPage = null;
     currentPage = null;
     isMorePage = null;
+    currentCatId = null;
+    currentLangId = null;
+    currentChannelId = null;
+    currentCastId = null;
+    _currentContentFilterKey = null;
+    _contentRequestGeneration++;
   }
 }

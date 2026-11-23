@@ -18,6 +18,8 @@ class HomeProvider extends ChangeNotifier {
   ChannelModel channelModel = ChannelModel();
 
   bool loading = false;
+  bool hasLoadError = false;
+  bool _sectionTypeRequestInFlight = false;
   int selectedIndex = -1;
   String currentPage = "";
 
@@ -52,8 +54,10 @@ class HomeProvider extends ChangeNotifier {
   }
 
   Future<void> getSectionType() async {
-    final hasExistingData = sectionTypeModel.result?.isNotEmpty == true;
-    if (!hasExistingData) {
+    if (_sectionTypeRequestInFlight) return;
+    _sectionTypeRequestInFlight = true;
+    hasLoadError = false;
+    if (sectionTypeModel.result?.isNotEmpty != true) {
       loading = true;
       notifyListeners();
     }
@@ -61,8 +65,9 @@ class HomeProvider extends ChangeNotifier {
       final fetched = await ApiService().sectionType();
       if (fetched.status == 200 && fetched.result?.isNotEmpty == true) {
         sectionTypeModel = fetched;
-      } else if (!hasExistingData) {
-        sectionTypeModel = fetched;
+        hasLoadError = false;
+      } else {
+        hasLoadError = true;
       }
       if (kIsWeb && sectionTypeModel.result?.isNotEmpty == true) {
         final preferences = await SharedPreferences.getInstance();
@@ -75,7 +80,10 @@ class HomeProvider extends ChangeNotifier {
         );
       }
     } on Exception catch (e) {
+      hasLoadError = true;
       printLog("getSectionType Exception :==> $e");
+    } finally {
+      _sectionTypeRequestInFlight = false;
     }
     printLog("getSectionType status :==> ${sectionTypeModel.status}");
     printLog("getSectionType message :==> ${sectionTypeModel.message}");
@@ -141,6 +149,8 @@ class HomeProvider extends ChangeNotifier {
     genresModel = GenresModel();
     channelModel = ChannelModel();
     loading = false;
+    hasLoadError = false;
+    _sectionTypeRequestInFlight = false;
     selectedIndex = -1;
     currentPage = "";
   }

@@ -88,8 +88,7 @@ class WebContentShowDetailsState extends State<WebContentShowDetails>
 
   Future<void> _getData({bool forceRefresh = false}) async {
     Utils.getCurrencySymbol();
-    rentStatus = await Utils.configByStatus(status: Constant.rentStatus);
-    printLog('_getData rentStatus =====> $rentStatus');
+    final rentStatusRequest = Utils.configByStatus(status: Constant.rentStatus);
 
     await Future.wait([
       showDetailsProvider.getContentDetails(
@@ -107,6 +106,13 @@ class WebContentShowDetailsState extends State<WebContentShowDetails>
         1,
       ),
     ]);
+
+    try {
+      rentStatus = await rentStatusRequest;
+      printLog('_getData rentStatus =====> $rentStatus');
+    } on Exception catch (e) {
+      printLog('_getData rentStatus Exception :==> $e');
+    }
 
     if (showDetailsProvider.contentDetailModel.status == 200) {
       if (showDetailsProvider.contentDetailModel.result != null &&
@@ -742,20 +748,40 @@ class WebContentShowDetailsState extends State<WebContentShowDetails>
   }
 
   Widget _buildPageUI() {
-    if (showDetailsProvider.loading) {
-      return SingleChildScrollView(
-        child: Dimens.isBigScreen(context)
-            ? ShimmerUtils.buildDetailWebShimmer(context, "show")
-            : ShimmerUtils.buildDetailMobileShimmer(context, "show"),
-      );
-    } else {
-      if (showDetailsProvider.contentDetailModel.status == 200 &&
-          showDetailsProvider.contentDetailModel.result != null) {
-        return _buildTVWebData();
-      } else {
+    return Consumer<ShowDetailsProvider>(
+      builder: (context, details, child) {
+        if (details.loading) {
+          return SingleChildScrollView(
+            child: Dimens.isBigScreen(context)
+                ? ShimmerUtils.buildDetailWebShimmer(context, "show")
+                : ShimmerUtils.buildDetailMobileShimmer(context, "show"),
+          );
+        }
+        if (details.contentDetailModel.status == 200 &&
+            details.contentDetailModel.result != null) {
+          return _buildTVWebData();
+        }
+        if (details.hasLoadError) {
+          return Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const NoData(
+                  title: 'Unable to load content',
+                  subTitle: 'Check your connection and try again.',
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton(
+                  onPressed: () => _getData(forceRefresh: true),
+                  child: const Text('Retry'),
+                ),
+              ],
+            ),
+          );
+        }
         return const NoData(title: '', subTitle: '');
-      }
-    }
+      },
+    );
   }
 
   Widget _buildTVWebData() {

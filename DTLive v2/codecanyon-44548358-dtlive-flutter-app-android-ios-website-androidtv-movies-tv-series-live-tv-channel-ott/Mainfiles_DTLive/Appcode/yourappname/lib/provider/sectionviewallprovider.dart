@@ -9,6 +9,8 @@ class SectionViewAllProvider extends ChangeNotifier {
   List<Result>? sectionDetailList = [];
 
   bool loading = false;
+  bool hasLoadError = false;
+  String? _currentSectionId;
 
   /* Post Pagination */
   bool loadMore = false;
@@ -25,33 +27,68 @@ class SectionViewAllProvider extends ChangeNotifier {
     printLog("getSectionDetails sectionId :==> $sectionId");
     printLog("getSectionDetails pageNo :=====> $pageNo");
 
-    sectionDetailModel = SectionDetailModel();
-    loading = true;
-    sectionDetailModel = await ApiService().sectionDetails(sectionId, pageNo);
-    if (sectionDetailModel.status == 200) {
-      setPagination(sectionDetailModel.totalRows, sectionDetailModel.totalPage,
-          sectionDetailModel.currentPage, sectionDetailModel.morePage);
-      if (sectionDetailModel.result != null &&
-          (sectionDetailModel.result?.length ?? 0) > 0) {
-        for (var i = 0; i < (sectionDetailModel.result?.length ?? 0); i++) {
-          sectionDetailList?.add(sectionDetailModel.result?[i] ?? Result());
-        }
-        final Map<String, Result> postMap = {};
-        sectionDetailList?.forEach((item) {
-          final key =
-              '${item.id}-${item.typeId}-${item.videoType}-${item.subVideoType}';
-          postMap[key] = item;
-        });
-        sectionDetailList = postMap.values.toList();
-        setLoadMore(false);
-        printLog(
-            "sectionDetailModel length :=2=> ${(sectionDetailModel.result?.length ?? 0)}");
-      }
-      printLog("getSectionDetails status :===> ${sectionDetailModel.status}");
-      printLog("getSectionDetails message :==> ${sectionDetailModel.message}");
+    final requestedSectionId = sectionId.toString();
+    final isSameSection = _currentSectionId == requestedSectionId;
+    final previousItems = isSameSection
+        ? List<Result>.from(sectionDetailList ?? <Result>[])
+        : <Result>[];
+    final previousModel = isSameSection
+        ? sectionDetailModel
+        : SectionDetailModel();
+    if (pageNo == 1 && !isSameSection) {
+      _currentSectionId = requestedSectionId;
+      sectionDetailModel = SectionDetailModel();
+      sectionDetailList = [];
     }
-    loading = false;
+    loading = true;
+    if (pageNo == 1) hasLoadError = false;
     notifyListeners();
+    try {
+      sectionDetailModel = await ApiService().sectionDetails(sectionId, pageNo);
+      if (sectionDetailModel.status == 200) {
+        hasLoadError = false;
+        setPagination(
+          sectionDetailModel.totalRows,
+          sectionDetailModel.totalPage,
+          sectionDetailModel.currentPage,
+          sectionDetailModel.morePage,
+        );
+        final mergedItems = <Result>[
+          if (pageNo != 1) ...previousItems,
+          ...?sectionDetailModel.result,
+        ];
+        if (mergedItems.isNotEmpty) {
+          final postMap = <String, Result>{};
+          for (final item in mergedItems) {
+            final key =
+                '${item.id}-${item.typeId}-${item.videoType}-${item.subVideoType}';
+            postMap[key] = item;
+          }
+          sectionDetailList = postMap.values.toList(growable: true);
+          setLoadMore(false);
+          printLog(
+            "sectionDetailModel length :=2=> ${(sectionDetailModel.result?.length ?? 0)}",
+          );
+        }
+        printLog("getSectionDetails status :===> ${sectionDetailModel.status}");
+        printLog(
+          "getSectionDetails message :==> ${sectionDetailModel.message}",
+        );
+      } else {
+        hasLoadError = true;
+        sectionDetailModel = previousModel;
+        sectionDetailList = previousItems;
+      }
+    } on Exception catch (e) {
+      hasLoadError = true;
+      sectionDetailModel = previousModel;
+      sectionDetailList = previousItems;
+      printLog("getSectionDetails Exception :==> $e");
+    } finally {
+      loading = false;
+      loadMore = false;
+      notifyListeners();
+    }
   }
 
   void setLoadMore(bool loadMore) {
@@ -61,7 +98,11 @@ class SectionViewAllProvider extends ChangeNotifier {
   }
 
   void setPagination(
-      int? totalRows, int? totalPage, int? currentPage, bool? morePage) {
+    int? totalRows,
+    int? totalPage,
+    int? currentPage,
+    bool? morePage,
+  ) {
     printLog("setPagination currentPage :==> $currentPage");
     printLog("setPagination totalRows :====> $totalRows");
     printLog("setPagination totalPage :====> $totalPage");
@@ -76,9 +117,11 @@ class SectionViewAllProvider extends ChangeNotifier {
   void clearProvider() {
     printLog("<================ clearProvider ================>");
     sectionDetailModel = SectionDetailModel();
+    _currentSectionId = null;
     sectionDetailList?.clear();
     sectionDetailList = [];
     loading = false;
+    hasLoadError = false;
     loadMore = false;
     totalRows;
     totalPage;

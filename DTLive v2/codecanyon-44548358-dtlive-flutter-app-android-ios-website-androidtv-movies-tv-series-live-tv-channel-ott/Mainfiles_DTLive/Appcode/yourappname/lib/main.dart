@@ -117,7 +117,9 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
 Future<void> _initializeFirebaseServices() async {
   try {
-    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
     if (!kIsWeb) {
       FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
     }
@@ -291,7 +293,14 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   }
 
   Future _getData() async {
-    await homeProvider.setLoading(true);
+    // WebHome owns the web catalog loading state. Keeping this global flag
+    // true until profile/device checks finish can leave a first visit stuck
+    // on the full-page shimmer even after the feed has loaded (or when the
+    // account checks are unavailable). Mobile screens still use the shared
+    // flag while their local Hive bootstrap is running.
+    if (!kIsWeb) {
+      await homeProvider.setLoading(true);
+    }
     /* *********** Check For Device START *********** */
     if (connectivityProvider.isOnline && Constant.userID != null) {
       await profileProvider.getDeviceSyncList();

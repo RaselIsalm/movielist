@@ -250,6 +250,24 @@ class WebVideosByIDState extends State<WebVideosByID> {
         }
         if (videoByIDProvider.contentList == null ||
             (videoByIDProvider.contentList?.length ?? 0) == 0) {
+          if (videoByIDProvider.hasLoadError) {
+            return Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const NoData(
+                    title: 'Unable to load content',
+                    subTitle: 'Check your connection and try again.',
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton(
+                    onPressed: _getData,
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
+            );
+          }
           return NoData(
             title: (widget.layoutType == RoutesConstant.videoByCatPage)
                 ? 'no_category_data_title'
@@ -288,26 +306,22 @@ class WebVideosByIDState extends State<WebVideosByID> {
                       ? Dimens.heightPortOtherWeb
                       : Dimens.heightPortOther,
                   borderRadius: Dimens.cardRadiusMedium,
-                  imageUrl: videoByIDProvider
-                          .contentList?[position]
-                          .thumbnail
+                  imageUrl:
+                      videoByIDProvider.contentList?[position].thumbnail
                           .toString() ??
                       "",
                   onTap: () {
                     printLog("Clicked on position ==> $position");
                     Utils.openDetails(
                       context: context,
-                      videoId:
-                          videoByIDProvider.contentList?[position].id ?? 0,
+                      videoId: videoByIDProvider.contentList?[position].id ?? 0,
                       subVideoType:
                           videoByIDProvider
                               .contentList?[position]
                               .subVideoType ??
                           0,
                       videoType:
-                          videoByIDProvider
-                              .contentList?[position]
-                              .videoType ??
+                          videoByIDProvider.contentList?[position].videoType ??
                           0,
                       typeId:
                           videoByIDProvider.contentList?[position].typeId ?? 0,

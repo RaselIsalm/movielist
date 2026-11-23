@@ -32,6 +32,7 @@ class SectionDataProvider extends ChangeNotifier {
   final Map<int, bool> sectionMore = <int, bool>{};
   final Set<int> sectionLoading = <int>{};
   final Set<int> sectionLoaded = <int>{};
+  final Set<int> sectionLoadErrors = <int>{};
   bool feedRefreshing = false;
 
   String get _homeCacheKey =>
@@ -113,11 +114,14 @@ class SectionDataProvider extends ChangeNotifier {
     printLog("getSectionBanner isHomePage :==> $isHomePage");
     loadingBanner = true;
     try {
-      final fetchedBanner =
-          await ApiService().sectionBanner(typeId, isHomePage);
+      final fetchedBanner = await ApiService().sectionBanner(
+        typeId,
+        isHomePage,
+      );
       if (fetchedBanner.status == 200 ||
           (previousBanner.result?.isEmpty ?? true)) {
         sectionBannerModel = fetchedBanner;
+        if (fetchedBanner.status == 200) hasLoadError = false;
       }
       printLog("getSectionBanner message :==> ${sectionBannerModel.message}");
       unawaited(_persistHomeCache());
@@ -139,6 +143,7 @@ class SectionDataProvider extends ChangeNotifier {
     sectionMore.clear();
     sectionLoading.clear();
     sectionLoaded.clear();
+    sectionLoadErrors.clear();
     notifyListeners();
   }
 
@@ -166,8 +171,9 @@ class SectionDataProvider extends ChangeNotifier {
   }
 
   Future<void> getSectionList(dynamic typeId, isHomePage, pageNo) async {
-    final previousSections =
-        List<section.Result>.from(sectionList ?? <section.Result>[]);
+    final previousSections = List<section.Result>.from(
+      sectionList ?? <section.Result>[],
+    );
     final previousModel = sectionListModel;
     printLog("getSectionList typeId :======> $typeId");
     printLog("getSectionList isHomePage :==> $isHomePage");
@@ -175,8 +181,11 @@ class SectionDataProvider extends ChangeNotifier {
     loadingSection = true;
     printLog("getSectionList length :======> ${sectionList?.length}");
     try {
-      sectionListModel =
-          await ApiService().sectionList(typeId, isHomePage, pageNo);
+      sectionListModel = await ApiService().sectionList(
+        typeId,
+        isHomePage,
+        pageNo,
+      );
     } on Exception catch (e) {
       printLog("getSectionList Exception :==> $e");
       hasLoadError = true;
@@ -192,17 +201,22 @@ class SectionDataProvider extends ChangeNotifier {
     }
     printLog("getSectionList message :==> ${sectionListModel.message}");
     printLog(
-        "sectionListModel length :=1=> ${(sectionListModel.result?.length ?? 0)}");
-    if (pageNo == 1) {
-      sectionList = [];
-    }
+      "sectionListModel length :=1=> ${(sectionListModel.result?.length ?? 0)}",
+    );
     if (sectionListModel.status == 200) {
-      setPagination(sectionListModel.totalRows, sectionListModel.totalPage,
-          sectionListModel.currentPage, sectionListModel.morePage);
+      hasLoadError = false;
+      if (pageNo == 1) sectionList = [];
+      setPagination(
+        sectionListModel.totalRows,
+        sectionListModel.totalPage,
+        sectionListModel.currentPage,
+        sectionListModel.morePage,
+      );
       if (sectionListModel.result != null &&
           (sectionListModel.result?.length ?? 0) > 0) {
         printLog(
-            "sectionListModel length :=2=> ${(sectionListModel.result?.length ?? 0)}");
+          "sectionListModel length :=2=> ${(sectionListModel.result?.length ?? 0)}",
+        );
         for (var i = 0; i < (sectionListModel.result?.length ?? 0); i++) {
           sectionListModel.result?[i].scrollController = ScrollController();
           sectionList?.add(sectionListModel.result?[i] ?? section.Result());
@@ -216,11 +230,13 @@ class SectionDataProvider extends ChangeNotifier {
         sectionList = postMap.values.toList();
         setLoadMore(false);
         printLog(
-            "sectionListModel length :=3=> ${(sectionListModel.result?.length ?? 0)}");
+          "sectionListModel length :=3=> ${(sectionListModel.result?.length ?? 0)}",
+        );
       } else {
         setLoadMore(false);
       }
     } else {
+      hasLoadError = true;
       sectionListModel = previousModel;
       if (previousSections.isNotEmpty) {
         sectionList = previousSections;
@@ -245,6 +261,8 @@ class SectionDataProvider extends ChangeNotifier {
       sectionMore.clear();
       sectionLoading.clear();
       sectionLoaded.clear();
+      sectionLoadErrors.clear();
+      hasLoadError = false;
     }
     feedRefreshing = true;
     if (isFirstLoad) {
@@ -257,6 +275,9 @@ class SectionDataProvider extends ChangeNotifier {
         isHomePage,
         cursor: refresh ? null : feedCursor,
       );
+      if (page.status != 200) {
+        throw Exception(page.message ?? 'Unable to load home sections');
+      }
       final incoming = page.result ?? <section.Result>[];
       if (refresh || isFirstLoad) {
         if (refresh && sectionList?.isNotEmpty == true) {
@@ -277,7 +298,8 @@ class SectionDataProvider extends ChangeNotifier {
         }
       } else {
         final merged = <String, section.Result>{
-          for (final item in sectionList ?? <section.Result>[]) _sectionKey(item): item,
+          for (final item in sectionList ?? <section.Result>[])
+            _sectionKey(item): item,
         };
         for (final item in incoming) {
           merged[_sectionKey(item)] = item;
@@ -308,11 +330,15 @@ class SectionDataProvider extends ChangeNotifier {
       }
     } on Exception catch (e) {
       printLog('getFeedSections Exception :==> $e');
+      hasLoadError = true;
       loadingSection = false;
       loadMore = false;
     } finally {
       loadMore = false;
       feedRefreshing = false;
+      if (!loadingSection && (sectionList?.isNotEmpty ?? false)) {
+        hasLoadError = false;
+      }
       notifyListeners();
     }
   }
@@ -324,12 +350,15 @@ class SectionDataProvider extends ChangeNotifier {
     final sectionId = sectionItem.id ?? 0;
     if (sectionId <= 0) return;
     if (sectionLoading.contains(sectionId)) return;
-    if (!refresh && sectionLoaded.contains(sectionId) &&
-        !(sectionMore[sectionId] ?? false)) return;
+    if (!refresh &&
+        sectionLoaded.contains(sectionId) &&
+        !(sectionMore[sectionId] ?? false))
+      return;
     sectionLoading.add(sectionId);
     if (refresh) {
       sectionLoaded.remove(sectionId);
       sectionCursors.remove(sectionId);
+      sectionLoadErrors.remove(sectionId);
     }
     try {
       final page = await ApiService().feedSectionItems(
@@ -337,8 +366,15 @@ class SectionDataProvider extends ChangeNotifier {
         cursor: refresh ? null : sectionCursors[sectionId],
         limit: (sectionItem.noOfContent ?? 12).clamp(4, 20).toInt(),
       );
+      if (page.status != 200) {
+        throw Exception(page.message ?? 'Unable to load this section');
+      }
       final merged = <String, section.Datum>{
-        for (final item in refresh ? <section.Datum>[] : (sectionItem.data ?? <section.Datum>[])) _itemKey(item): item,
+        for (final item
+            in refresh
+                ? <section.Datum>[]
+                : (sectionItem.data ?? <section.Datum>[]))
+          _itemKey(item): item,
       };
       for (final item in page.result) {
         merged[_itemKey(item)] = item;
@@ -347,9 +383,12 @@ class SectionDataProvider extends ChangeNotifier {
       sectionCursors[sectionId] = page.nextCursor;
       sectionMore[sectionId] = page.hasMore;
       sectionLoaded.add(sectionId);
+      sectionLoadErrors.remove(sectionId);
       unawaited(_persistHomeCache());
     } on Exception catch (e) {
       printLog('getFeedSectionItems Exception :==> $e');
+      hasLoadError = true;
+      sectionLoadErrors.add(sectionId);
     } finally {
       sectionLoading.remove(sectionId);
       notifyListeners();
@@ -358,7 +397,11 @@ class SectionDataProvider extends ChangeNotifier {
 
   bool hasLoadedFeedSection(int sectionId) => sectionLoaded.contains(sectionId);
 
-  bool isLoadingFeedSection(int sectionId) => sectionLoading.contains(sectionId);
+  bool isLoadingFeedSection(int sectionId) =>
+      sectionLoading.contains(sectionId);
+
+  bool hasFeedSectionError(int sectionId) =>
+      sectionLoadErrors.contains(sectionId);
 
   String _sectionKey(section.Result item) =>
       '${item.id}-${item.typeId}-${item.videoType}-${item.subVideoType}';
@@ -373,7 +416,11 @@ class SectionDataProvider extends ChangeNotifier {
   }
 
   void setPagination(
-      int? totalRows, int? totalPage, int? currentPage, bool? morePage) {
+    int? totalRows,
+    int? totalPage,
+    int? currentPage,
+    bool? morePage,
+  ) {
     printLog("setPagination currentPage :==> $currentPage");
     printLog("setPagination totalRows :====> $totalRows");
     printLog("setPagination totalPage :====> $totalPage");
@@ -402,12 +449,18 @@ class SectionDataProvider extends ChangeNotifier {
   }
 
   Future<void> addRemoveBookmark(
-      dynamic subVideoType, videoType, videoId) async {
+    dynamic subVideoType,
+    videoType,
+    videoId,
+  ) async {
     printLog("addRemoveBookmark subVideoType :==> $subVideoType");
     printLog("addRemoveBookmark videoType :=====> $videoType");
     printLog("addRemoveBookmark videoId :=======> $videoId");
-    successModel =
-        await ApiService().addRemoveBookmark(subVideoType, videoType, videoId);
+    successModel = await ApiService().addRemoveBookmark(
+      subVideoType,
+      videoType,
+      videoId,
+    );
     printLog("addRemoveBookmark status :===> ${successModel.status}");
     printLog("addRemoveBookmark message :==> ${successModel.message}");
   }

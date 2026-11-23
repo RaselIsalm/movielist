@@ -13,6 +13,7 @@ class ShowDetailsProvider extends ChangeNotifier {
   List<episode.Result>? episodeList = [];
 
   bool loading = false;
+  bool hasLoadError = false;
   int seasonPos = 0, mCurrentEpiPos = -1;
   String tabClickedOn = "related";
 
@@ -21,6 +22,8 @@ class ShowDetailsProvider extends ChangeNotifier {
   int? _currentVideoType;
   int? _currentVideoId;
   int? _currentSubVideoType;
+  int _detailsRequestGeneration = 0;
+  int _relatedRequestGeneration = 0;
 
   bool get isLoading => loading;
   bool get isRelatedLoading => relatedLoading;
@@ -43,6 +46,7 @@ class ShowDetailsProvider extends ChangeNotifier {
     printLog("getContentDetails subVideoType :==> $subVideoType");
     // Skip reloading if same video request
     if (!forceRefresh &&
+        contentDetailModel.status == 200 &&
         _currentTypeId == typeId &&
         _currentVideoType == videoType &&
         _currentVideoId == videoId &&
@@ -53,6 +57,19 @@ class ShowDetailsProvider extends ChangeNotifier {
       return;
     }
 
+    final isSameContent =
+        _currentTypeId == typeId &&
+        _currentVideoType == videoType &&
+        _currentVideoId == videoId &&
+        _currentSubVideoType == subVideoType;
+    if (!isSameContent) {
+      contentDetailModel = ContentDetailModel();
+      relatedContentModel = RelatedContentModel();
+      episodeList = [];
+      seasonPos = 0;
+      mCurrentEpiPos = -1;
+    }
+
     // Update current params
     _currentTypeId = typeId;
     _currentVideoType = videoType;
@@ -60,37 +77,70 @@ class ShowDetailsProvider extends ChangeNotifier {
     _currentSubVideoType = subVideoType;
 
     loading = true;
+    hasLoadError = false;
+    final requestGeneration = ++_detailsRequestGeneration;
     notifyListeners();
     try {
-      contentDetailModel = await ApiService()
-          .contentDetails(typeId, videoType, videoId, subVideoType);
+      final fetched = await ApiService().contentDetails(
+        typeId,
+        videoType,
+        videoId,
+        subVideoType,
+      );
+      if (requestGeneration != _detailsRequestGeneration) return;
+      contentDetailModel = fetched;
       printLog("getContentDetails status :===> ${contentDetailModel.status}");
       printLog("getContentDetails message :==> ${contentDetailModel.message}");
+      hasLoadError = contentDetailModel.status != 200;
+    } on Exception catch (e) {
+      if (requestGeneration != _detailsRequestGeneration) return;
+      hasLoadError = true;
+      printLog("getContentDetails Exception :==> $e");
     } finally {
-      loading = false;
-      notifyListeners();
+      if (requestGeneration == _detailsRequestGeneration) {
+        loading = false;
+        notifyListeners();
+      }
     }
   }
 
   Future<void> getRelatedContent(
-      dynamic typeId, videoType, videoId, subVideoType, pageNo) async {
+    dynamic typeId,
+    videoType,
+    videoId,
+    subVideoType,
+    pageNo,
+  ) async {
     printLog("getRelatedContent typeId :========> $typeId");
     printLog("getRelatedContent videoType :=====> $videoType");
     printLog("getRelatedContent videoId :=======> $videoId");
     printLog("getRelatedContent subVideoType :==> $subVideoType");
     printLog("getRelatedContent pageNo :========> $pageNo");
 
+    final requestGeneration = ++_relatedRequestGeneration;
     relatedLoading = true;
     notifyListeners();
 
     try {
-      relatedContentModel = await ApiService()
-          .relatedContent(typeId, videoType, videoId, subVideoType, pageNo);
+      final fetched = await ApiService().relatedContent(
+        typeId,
+        videoType,
+        videoId,
+        subVideoType,
+        pageNo,
+      );
+      if (requestGeneration != _relatedRequestGeneration) return;
+      relatedContentModel = fetched;
       printLog("getRelatedContent status :===> ${relatedContentModel.status}");
       printLog("getRelatedContent message :==> ${relatedContentModel.message}");
+    } on Exception catch (e) {
+      if (requestGeneration != _relatedRequestGeneration) return;
+      printLog("getRelatedContent Exception :==> $e");
     } finally {
-      relatedLoading = false;
-      notifyListeners();
+      if (requestGeneration == _relatedRequestGeneration) {
+        relatedLoading = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -102,7 +152,8 @@ class ShowDetailsProvider extends ChangeNotifier {
     });
     this.episodeList = postMap.values.toList();
     printLog(
-        "setEpisodeBySeason episodeList ================> ${this.episodeList?.length}");
+      "setEpisodeBySeason episodeList ================> ${this.episodeList?.length}",
+    );
     getLastWatchedEpisode();
     notifyListeners();
   }
@@ -131,7 +182,11 @@ class ShowDetailsProvider extends ChangeNotifier {
   }
 
   Future<void> setBookMark(
-      BuildContext context, subVideoType, videoType, videoId) async {
+    BuildContext context,
+    subVideoType,
+    videoType,
+    videoId,
+  ) async {
     loading = true;
     if ((contentDetailModel.result?[0].isBookmark ?? 0) == 0) {
       contentDetailModel.result?[0].isBookmark = 1;
@@ -149,8 +204,11 @@ class ShowDetailsProvider extends ChangeNotifier {
     printLog("getAddBookMark subVideoType :==> $subVideoType");
     printLog("getAddBookMark videoType :=====> $videoType");
     printLog("getAddBookMark videoId :=======> $videoId");
-    successModel =
-        await ApiService().addRemoveBookmark(subVideoType, videoType, videoId);
+    successModel = await ApiService().addRemoveBookmark(
+      subVideoType,
+      videoType,
+      videoId,
+    );
     printLog("getAddBookMark status :===> ${successModel.status}");
     printLog("getAddBookMark message :==> ${successModel.message}");
   }
@@ -181,8 +239,11 @@ class ShowDetailsProvider extends ChangeNotifier {
     printLog("addRemoveLike subVideoType :==> $subVideoType");
     printLog("addRemoveLike videoType :=====> $videoType");
     printLog("addRemoveLike videoId :=======> $videoId");
-    successModel =
-        await ApiService().addRemoveLike(subVideoType, videoType, videoId);
+    successModel = await ApiService().addRemoveLike(
+      subVideoType,
+      videoType,
+      videoId,
+    );
     printLog("addRemoveLike status :===> ${successModel.status}");
     printLog("addRemoveLike message :==> ${successModel.message}");
   }
@@ -209,6 +270,13 @@ class ShowDetailsProvider extends ChangeNotifier {
   void clearProvider() {
     printLog("<================ clearProvider ================>");
     loading = false;
+    hasLoadError = false;
+    contentDetailModel = ContentDetailModel();
+    relatedContentModel = RelatedContentModel();
+    _currentTypeId = null;
+    _currentVideoType = null;
+    _currentVideoId = null;
+    _currentSubVideoType = null;
     episodeList?.clear();
     episodeList = [];
     successModel = SuccessModel();

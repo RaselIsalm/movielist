@@ -339,33 +339,58 @@ class WebHomeState extends State<WebHome> {
   }
 
   Widget _buildPageUI() {
-    final hasCachedHome =
-        (sectionDataProvider.sectionList?.isNotEmpty ?? false) ||
-        (sectionDataProvider.sectionBannerModel.result?.isNotEmpty ?? false);
-    if (!_firstContentReported && hasCachedHome) {
-      _firstContentReported = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        FirstPartyTelemetry.instance.track(
-          'first_content',
-          placement: 'home',
-          viewport: 'web',
-        );
-      });
-    }
-    final isLoading = homeProvider.loading ||
-        sectionDataProvider.loadingBanner ||
-        sectionDataProvider.loadingSection;
-    if (isLoading && !hasCachedHome) {
-      return ShimmerUtils.buildHomeMobileShimmer(context);
-    } else {
-      if (homeProvider.sectionTypeModel.status == 200 || hasCachedHome) {
-        return _buildTypeTabData(homeProvider.sectionTypeModel.result);
-      } else {
+    return Consumer2<HomeProvider, SectionDataProvider>(
+      builder: (context, homeState, sectionState, child) {
+        final hasCachedHome =
+            (sectionState.sectionList?.isNotEmpty ?? false) ||
+            (sectionState.sectionBannerModel.result?.isNotEmpty ?? false);
+        if (!_firstContentReported && hasCachedHome) {
+          _firstContentReported = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            FirstPartyTelemetry.instance.track(
+              'first_content',
+              placement: 'home',
+              viewport: 'web',
+            );
+          });
+        }
+        final isLoading =
+            homeState.loading ||
+            sectionState.loadingBanner ||
+            sectionState.loadingSection;
+        if (isLoading && !hasCachedHome) {
+          return ShimmerUtils.buildHomeMobileShimmer(context);
+        }
+        if (homeState.sectionTypeModel.status == 200 || hasCachedHome) {
+          return _buildTypeTabData(homeState.sectionTypeModel.result);
+        }
+        if (homeState.hasLoadError || sectionState.hasLoadError) {
+          return Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const NoData(
+                  title: 'Unable to load content',
+                  subTitle: 'Check your connection and try again.',
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton(
+                  onPressed: () async {
+                    await homeState.getSectionType();
+                    if (!mounted) return;
+                    await getTabData(-1, homeState.sectionTypeModel.result);
+                  },
+                  child: const Text('Retry'),
+                ),
+              ],
+            ),
+          );
+        }
         return const Center(
           child: NoData(title: 'no_data', subTitle: 'no_video_show'),
         );
-      }
-    }
+      },
+    );
   }
 
   Widget _buildTypeTabData(List<type.Result>? sectionTypeList) {
@@ -388,10 +413,8 @@ class WebHomeState extends State<WebHome> {
                   ),
                   const SizedBox(height: 12),
                   OutlinedButton(
-                    onPressed: () => getTabData(
-                      -1,
-                      homeProvider.sectionTypeModel.result,
-                    ),
+                    onPressed: () =>
+                        getTabData(-1, homeProvider.sectionTypeModel.result),
                     child: const Text('Retry'),
                   ),
                 ],
@@ -1451,136 +1474,165 @@ class WebHomeState extends State<WebHome> {
           },
           child: Builder(
             builder: (context) {
-        if (item.data != null &&
-            (sectionList?[index].data?.length ?? 0) > 0) {
-          if (sectionList?[index].videoType == Constant.continueWatchType &&
-              continueWatchingStatus != null &&
-              continueWatchingStatus != "1") {
-            return const SizedBox.shrink();
-          }
+              if (item.data != null &&
+                  (sectionList?[index].data?.length ?? 0) > 0) {
+                if (sectionList?[index].videoType ==
+                        Constant.continueWatchType &&
+                    continueWatchingStatus != null &&
+                    continueWatchingStatus != "1") {
+                  return const SizedBox.shrink();
+                }
 
-          /* ── AI Recommendation Section ──────────────────── */
-          if ((sectionList?[index].sectionType ?? 0) ==
-              Constant.aiContentType) {
-            return Padding(
-              padding: EdgeInsets.only(
-                bottom: Dimens.isBigScreen(context) ? 40 : 25,
-                top: Dimens.isBigScreen(context) ? 40 : 20,
-              ),
-              child: AISectionWidget(
-                section: sectionList![index],
-                onItemTap: (datum, _) {
-                  openDetailPage(
-                    datum.id ?? 0,
-                    datum.subVideoType ?? 0,
-                    datum.videoType ?? 0,
-                    datum.typeId ?? 0,
-                  );
-                },
-                onViewAllTap: () {
-                  if ((sectionList[index].viewAll ?? 0) == 1) {
-                    final sectionViewAllProvider =
-                        Provider.of<SectionViewAllProvider>(
-                          context,
-                          listen: false,
+                /* ── AI Recommendation Section ──────────────────── */
+                if ((sectionList?[index].sectionType ?? 0) ==
+                    Constant.aiContentType) {
+                  return Padding(
+                    padding: EdgeInsets.only(
+                      bottom: Dimens.isBigScreen(context) ? 40 : 25,
+                      top: Dimens.isBigScreen(context) ? 40 : 20,
+                    ),
+                    child: AISectionWidget(
+                      section: sectionList![index],
+                      onItemTap: (datum, _) {
+                        openDetailPage(
+                          datum.id ?? 0,
+                          datum.subVideoType ?? 0,
+                          datum.videoType ?? 0,
+                          datum.typeId ?? 0,
                         );
-                    sectionViewAllProvider.setLoading(true);
-                    context.go(
-                      "/${RoutesConstant.sectionDetailsPage}/${(sectionList[index].id ?? 0)}/${(sectionList[index].videoType ?? 0)}/${sectionList[index].screenLayout}",
-                      extra: {
-                        'newpage': widget.newPage.toString(),
-                        'itemid': (sectionList[index].id ?? 0).toString(),
-                        'title': sectionList[index].title ?? '',
-                        'screenlayout': sectionList[index].screenLayout ?? '',
-                        'videotype': (sectionList[index].videoType ?? 0)
-                            .toString(),
                       },
-                    );
-                  }
-                },
-              ),
-            );
-          }
-          /* ─────────────────────────────────────────────────── */
+                      onViewAllTap: () {
+                        if ((sectionList[index].viewAll ?? 0) == 1) {
+                          final sectionViewAllProvider =
+                              Provider.of<SectionViewAllProvider>(
+                                context,
+                                listen: false,
+                              );
+                          sectionViewAllProvider.setLoading(true);
+                          context.go(
+                            "/${RoutesConstant.sectionDetailsPage}/${(sectionList[index].id ?? 0)}/${(sectionList[index].videoType ?? 0)}/${sectionList[index].screenLayout}",
+                            extra: {
+                              'newpage': widget.newPage.toString(),
+                              'itemid': (sectionList[index].id ?? 0).toString(),
+                              'title': sectionList[index].title ?? '',
+                              'screenlayout':
+                                  sectionList[index].screenLayout ?? '',
+                              'videotype': (sectionList[index].videoType ?? 0)
+                                  .toString(),
+                            },
+                          );
+                        }
+                      },
+                    ),
+                  );
+                }
+                /* ─────────────────────────────────────────────────── */
 
-          return Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildTitleViewAll(
-                sectionList: sectionList,
-                index: index,
-                onViewAllClick: () async {
-                  printLog("viewAll ====> ${sectionList?[index].viewAll}");
-                  final sectionViewAllProvider =
-                      Provider.of<SectionViewAllProvider>(
-                        context,
-                        listen: false,
-                      );
-                  if ((sectionList?[index].viewAll ?? 0) == 1) {
-                    sectionViewAllProvider.setLoading(true);
-                    if (!context.mounted) return;
-                    context.go(
-                      "/${RoutesConstant.sectionDetailsPage}/${(sectionList?[index].id ?? 0)}/${(sectionList?[index].videoType ?? 0)}/${sectionList?[index].screenLayout}",
-                      extra: {
-                        'newpage': widget.newPage.toString(),
-                        'itemid': (sectionList?[index].id ?? 0).toString(),
-                        'title': sectionList?[index].title ?? '',
-                        'screenlayout': sectionList?[index].screenLayout ?? '',
-                        'videotype': (sectionList?[index].videoType ?? 0)
-                            .toString(),
+                return Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildTitleViewAll(
+                      sectionList: sectionList,
+                      index: index,
+                      onViewAllClick: () async {
+                        printLog(
+                          "viewAll ====> ${sectionList?[index].viewAll}",
+                        );
+                        final sectionViewAllProvider =
+                            Provider.of<SectionViewAllProvider>(
+                              context,
+                              listen: false,
+                            );
+                        if ((sectionList?[index].viewAll ?? 0) == 1) {
+                          sectionViewAllProvider.setLoading(true);
+                          if (!context.mounted) return;
+                          context.go(
+                            "/${RoutesConstant.sectionDetailsPage}/${(sectionList?[index].id ?? 0)}/${(sectionList?[index].videoType ?? 0)}/${sectionList?[index].screenLayout}",
+                            extra: {
+                              'newpage': widget.newPage.toString(),
+                              'itemid': (sectionList?[index].id ?? 0)
+                                  .toString(),
+                              'title': sectionList?[index].title ?? '',
+                              'screenlayout':
+                                  sectionList?[index].screenLayout ?? '',
+                              'videotype': (sectionList?[index].videoType ?? 0)
+                                  .toString(),
+                            },
+                          );
+                        }
                       },
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: MediaQuery.of(context).size.width,
+                      height: getRemainingDataHeight(
+                        sectionList?[index].videoType.toString() ?? "",
+                        sectionList?[index].screenLayout ?? "",
+                        sectionList,
+                        index,
+                      ),
+                      child: setSectionData(
+                        sectionList: sectionList,
+                        index: index,
+                      ),
+                    ),
+                    SizedBox(height: Dimens.isBigScreen(context) ? 40 : 25),
+                  ],
+                );
+              } else {
+                if (sectionDataProvider.hasFeedSectionError(item.id ?? 0)) {
+                  return Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 10, 20, 25),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton.icon(
+                        onPressed: () => unawaited(
+                          sectionDataProvider.getFeedSectionItems(
+                            item,
+                            refresh: true,
+                          ),
+                        ),
+                        icon: const Icon(Icons.refresh, color: colorPrimary),
+                        label: const Text('Content unavailable. Tap to retry.'),
+                      ),
+                    ),
+                  );
+                }
+                if ((sectionDataProvider.sectionBannerModel.result == null ||
+                        (sectionDataProvider
+                                    .sectionBannerModel
+                                    .result
+                                    ?.length ??
+                                0) ==
+                            0) &&
+                    (sectionDataProvider.sectionList != null &&
+                        (sectionDataProvider.sectionList?.length ?? 0) == 1) &&
+                    !sectionDataProvider.loadingBanner &&
+                    !sectionDataProvider.loadingSection) {
+                  return const Center(
+                    child: NoData(title: 'no_data', subTitle: 'no_video_show'),
+                  );
+                } else {
+                  if (sectionDataProvider.isLoadingFeedSection(item.id ?? 0) ||
+                      sectionDataProvider.loadingSection) {
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 25),
+                      child: ShimmerUtils.setHomeSections(
+                        context,
+                        item.screenLayout ?? 'landscape',
+                      ),
                     );
                   }
-                },
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: MediaQuery.of(context).size.width,
-                height: getRemainingDataHeight(
-                  sectionList?[index].videoType.toString() ?? "",
-                  sectionList?[index].screenLayout ?? "",
-                  sectionList,
-                  index,
-                ),
-                child: setSectionData(sectionList: sectionList, index: index),
-              ),
-              SizedBox(height: Dimens.isBigScreen(context) ? 40 : 25),
-            ],
-          );
-        } else {
-          if ((sectionDataProvider.sectionBannerModel.result == null ||
-                  (sectionDataProvider.sectionBannerModel.result?.length ??
-                          0) ==
-                      0) &&
-              (sectionDataProvider.sectionList != null &&
-                  (sectionDataProvider.sectionList?.length ?? 0) == 1) &&
-              !sectionDataProvider.loadingBanner &&
-              !sectionDataProvider.loadingSection) {
-            return const Center(
-              child: NoData(title: 'no_data', subTitle: 'no_video_show'),
-            );
-          } else {
-            if (sectionDataProvider.isLoadingFeedSection(item.id ?? 0) ||
-                sectionDataProvider.loadingSection) {
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 25),
-                child: ShimmerUtils.setHomeSections(
-                  context,
-                  item.screenLayout ?? 'landscape',
-                ),
-              );
-            }
-            return const SizedBox.shrink();
-          }
-        }
+                  return const SizedBox.shrink();
+                }
+              }
             },
           ),
         );
       },
     );
   }
-
 
   Widget _buildTitleViewAll({
     required List<list.Result>? sectionList,
