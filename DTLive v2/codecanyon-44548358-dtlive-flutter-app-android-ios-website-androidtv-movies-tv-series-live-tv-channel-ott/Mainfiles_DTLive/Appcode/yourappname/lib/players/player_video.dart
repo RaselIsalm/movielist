@@ -26,7 +26,6 @@ import '../routes/routes_constant.dart';
 import '../utils/color.dart';
 import '../utils/constant.dart';
 import '../utils/utils.dart';
-import '../widget/myfileimage.dart'; // [TASK-3]
 import '../widget/myimage.dart';
 import '../widget/mynetworkimg.dart';
 import '../widget/mytext.dart';
@@ -256,7 +255,7 @@ class _PlayerVideoState extends State<PlayerVideo>
   Future<void> _resumeContent() async {
     if (!mounted) return;
     _isAdActuallyPlaying = false;
-    _shouldShowContentVideo = true;
+    _shouldShowContentVideo = false;
     playerProvider.notifyProvider();
 
     if (_isControllerReady && _videoPlayerController.value.isInitialized) {
@@ -265,6 +264,11 @@ class _PlayerVideoState extends State<PlayerVideo>
         printLog("Player: content play failed after initialization");
         return;
       }
+      // Do not swap away from the loading surface until the browser/native
+      // player has accepted the play request. This prevents a poster frame or
+      // a paused black video from looking like playback has started.
+      _shouldShowContentVideo = true;
+      if (mounted) playerProvider.notifyProvider();
       startDurationTimer();
       // Restart progress updates so future mid-roll cue points advance.
       _startContentProgressUpdates();
@@ -1793,7 +1797,10 @@ class _PlayerVideoState extends State<PlayerVideo>
                                   Expanded(child: _buildPlayerSurface()),
                                   const AdsterraAd(
                                     unit: AdsterraUnit.banner300x250,
-                                    margin: EdgeInsets.only(top: 12, bottom: 16),
+                                    margin: EdgeInsets.only(
+                                      top: 12,
+                                      bottom: 16,
+                                    ),
                                   ),
                                 ],
                               );
@@ -1804,7 +1811,8 @@ class _PlayerVideoState extends State<PlayerVideo>
                             // constraints, so portrait and landscape both
                             // receive a full player surface. The compact
                             // banner remains immediately below it.
-                            final playerHeight = constraints.hasBoundedHeight &&
+                            final playerHeight =
+                                constraints.hasBoundedHeight &&
                                     constraints.maxHeight > 0
                                 ? constraints.maxHeight
                                 : constraints.maxWidth * 9 / 16;
@@ -1912,24 +1920,26 @@ class _PlayerVideoState extends State<PlayerVideo>
 
     if (_playerError != null) {
       child = _buildPlayerErrorView(key: const ValueKey('video-error'));
-    } else if (!_isControllerReady) {
-      child = _buildPosterView(key: const ValueKey('poster-init'));
-    } else if (!_shouldShowContentVideo &&
+    } else if (!_isControllerReady ||
+        _isPlayerInitializing ||
         !_videoPlayerController.value.isInitialized) {
-      child = _buildPosterView(key: const ValueKey('poster-wait'));
+      child = _buildPlayerLoading(key: const ValueKey('video-loading'));
     } else if (_shouldShowContentVideo &&
         _videoPlayerController.value.isInitialized) {
       child = _buildPlayer(key: const ValueKey('video-player'));
     } else if (!_shouldShowContentVideo &&
         _videoPlayerController.value.isInitialized) {
-      // Ad is playing — show black fill (ad container is above this in the Stack)
+      // Ad is playing or the play request is still being accepted. Keep the
+      // content surface black and never reveal the catalog poster underneath.
       child = Container(
         key: const ValueKey('ad-placeholder'),
         color: black,
-        child: _buildPosterView(),
+        child: _buildPlayerLoading(),
       );
     } else {
-      child = _buildPosterView(key: const ValueKey('poster-init2'));
+      child = _buildPlayerLoading(
+        key: const ValueKey('video-loading-fallback'),
+      );
     }
 
     return AnimatedSwitcher(
@@ -1939,6 +1949,19 @@ class _PlayerVideoState extends State<PlayerVideo>
       transitionBuilder: (child, animation) =>
           FadeTransition(opacity: animation, child: child),
       child: child,
+    );
+  }
+
+  Widget _buildPlayerLoading({Key? key}) {
+    return Container(
+      key: key,
+      color: black,
+      alignment: Alignment.center,
+      child: const SizedBox(
+        width: 34,
+        height: 34,
+        child: CircularProgressIndicator(strokeWidth: 3, color: colorAccent),
+      ),
     );
   }
 
@@ -1988,23 +2011,6 @@ class _PlayerVideoState extends State<PlayerVideo>
           ],
         ),
       ),
-    );
-  }
-
-  Widget _buildPosterView({Key? key}) {
-    final poster = (widget.playerModel.videoThumb ?? '').trim();
-    return Container(
-      key: key,
-      color: black,
-      alignment: Alignment.center,
-      child: poster.isEmpty
-          ? const SizedBox.expand()
-          : MyNetworkImage(
-              imageUrl: poster,
-              fit: BoxFit.contain,
-              width: double.infinity,
-              height: double.infinity,
-            ),
     );
   }
 
@@ -2982,112 +2988,6 @@ class _PlayerVideoState extends State<PlayerVideo>
     );
   }
 
-  Widget _buildLoadingView({Key? key}) {
-    final thumb = widget.playerModel.videoThumb ?? "";
-    final isDownload = widget.playerModel.playType == "Download"; // [IMP-1]
-    return Stack(
-      key: key,
-      fit: StackFit.expand,
-      children: [
-        // Thumbnail background — local file for downloads, network for streaming
-        if (thumb.isNotEmpty)
-          isDownload // [IMP-1]
-              ? MyFileImage(
-                  // [TASK-3]
-                  imagePath: thumb,
-                  fit: BoxFit.cover,
-                )
-              : MyNetworkImage(imageUrl: thumb, fit: BoxFit.cover), // [IMP-1]
-        // Dark scrim
-        ColoredBox(color: black.withValues(alpha: 0.65)), // [IMP-1] [IMP-4]
-        // Single loading indicator — centered
-        Center(child: _buildLoading()),
-        // Back button always accessible
-        SafeArea(
-          child: Align(
-            alignment: Alignment.topLeft,
-            child: IconButton(
-              icon: Icon(
-                Icons.arrow_back_ios_new_rounded,
-                color: white, // [IMP-4]
-                size: 20,
-              ),
-              onPressed: () => onBackPressed(false),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildLoading() {
-    return Consumer<PlayerProvider>(
-      builder: (context, playerProvider, child) {
-        final isDownload = widget.playerModel.playType == "Download"; // [IMP-1]
-        final progress = playerProvider.progress; // [IMP-1]
-        return Column(
-          mainAxisSize: MainAxisSize.min, // [IMP-1]
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            // [IMP-1] Single spinner: circular for download, pageLoader for streaming
-            if (isDownload) // [IMP-1]
-              SizedBox(
-                height: 70,
-                width: 70,
-                child: Utils.progressWithPercentage(
-                  progress,
-                ), // [IMP-1] only this for downloads
-              )
-            else
-              SizedBox(
-                height: 70,
-                width: 70,
-                child: Utils.pageLoader(), // [IMP-1] only this for streaming
-              ),
-
-            // Decrypt progress text — downloads only, when actively decrypting
-            if (isDownload && progress > 0) ...[
-              // [IMP-1]
-              const SizedBox(height: 16),
-              MyText(
-                color: titleTextColor,
-                text:
-                    "${Locales.string(context, "loading")} ${(progress * 100).toStringAsFixed(1)}%", // [IMP-1]
-                textalign: TextAlign.center,
-                fontsizeNormal: 14,
-                fontweight: FontWeight.w600,
-                fontsizeWeb: 16,
-                multilanguage: false,
-                maxline: 1,
-                overflow: TextOverflow.ellipsis,
-                fontstyle: FontStyle.normal,
-              ),
-            ],
-
-            // "Preparing..." label for download when progress == 0
-            if (isDownload && progress == 0) ...[
-              // [IMP-1]
-              const SizedBox(height: 16),
-              MyText(
-                color: white.withValues(alpha: 0.70), // [IMP-1] [IMP-4]
-                text: "Preparing video...",
-                textalign: TextAlign.center,
-                fontsizeNormal: 13,
-                fontweight: FontWeight.w500,
-                fontsizeWeb: 14,
-                multilanguage: false,
-                maxline: 1,
-                overflow: TextOverflow.ellipsis,
-                fontstyle: FontStyle.normal,
-              ),
-            ],
-          ],
-        );
-      },
-    );
-  }
-
   // [NEW] UI-8: Netflix-style dark card countdown widget
   Widget _buildCountdownWidget() {
     final nextIndex = (widget.playerModel.currentEpiPos ?? 0) + 1;
@@ -3179,7 +3079,10 @@ class _PlayerVideoState extends State<PlayerVideo>
               children: [
                 MyText(
                   color: white.withValues(alpha: 0.60),
-                  text: Locales.string(context, 'playing_in_sec').replaceAll('{0}', '$_countdownSeconds'),
+                  text: Locales.string(
+                    context,
+                    'playing_in_sec',
+                  ).replaceAll('{0}', '$_countdownSeconds'),
                   multilanguage: false,
                   fontsizeNormal: 11,
                   fontsizeWeb: 11,
