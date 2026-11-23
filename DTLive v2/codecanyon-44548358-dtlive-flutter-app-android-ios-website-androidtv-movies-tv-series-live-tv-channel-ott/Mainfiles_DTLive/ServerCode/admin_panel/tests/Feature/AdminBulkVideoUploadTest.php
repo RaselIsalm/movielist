@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class AdminBulkVideoUploadTest extends TestCase
@@ -156,6 +157,40 @@ class AdminBulkVideoUploadTest extends TestCase
             ->assertOk()
             ->assertJson(['status' => 200, 'count' => 1]);
         $this->assertSame(1, Video::count());
+    }
+
+    public function test_a_completed_video_can_be_retried_after_the_session_receipt_is_lost(): void
+    {
+        $uploadId = $this->uploadMp4('completed-retry.mp4', $this->validMp4('completed and cleaned'));
+        $payload = $this->batchPayload([$uploadId]);
+
+        $this->postJson(route('admin.video.bulk.save'), $payload)
+            ->assertOk()->assertJson(['status' => 200, 'completed_count' => 1]);
+        $this->assertFileDoesNotExist(storage_path('app/bulk-video-staging/17/' . $uploadId . '/' . $uploadId . '.mp4'));
+
+        session()->forget('bulk_video_receipts');
+        $this->postJson(route('admin.video.bulk.save'), $payload)
+            ->assertOk()->assertJson(['status' => 200, 'completed_count' => 1]);
+
+        $this->assertSame(1, Video::count(), 'A lost save response must not create a duplicate video.');
+    }
+
+    public function test_an_incomplete_upload_prevents_any_video_in_the_batch_from_being_queued(): void
+    {
+        Queue::fake();
+        $completeId = $this->uploadMp4('complete.mp4', $this->validMp4('complete video'));
+        $incomplete = $this->postJson(route('admin.video.bulk.init'), [
+            'upload_name' => 'still-uploading.mp4', 'file_size' => 32,
+        ])->assertOk();
+        $incompleteId = $incomplete->json('upload_id');
+
+        $this->postJson(route('admin.video.bulk.save'), $this->batchPayload([$completeId, $incompleteId]))
+            ->assertUnprocessable()
+            ->assertJsonPath('incomplete_upload_ids.0', $incompleteId)
+            ->assertJsonPath('incomplete_count', 1);
+
+        Queue::assertNothingPushed();
+        $this->assertSame(0, Video::count());
     }
 
     public function test_it_uses_the_configured_s3_storage_disk(): void
@@ -298,12 +333,25 @@ class AdminBulkVideoUploadTest extends TestCase
         $this->assertSame([], Storage::disk('public')->allFiles('content'));
     }
 
-    public function test_it_accepts_and_queues_one_hundred_upload_ids_as_json(): void
+    public function test_it_accepts_and_queues_one_thousand_upload_ids_as_json(): void
     {
         Queue::fake();
         $uploadIds = [];
-        for ($index = 0; $index < 100; $index++) {
-            $uploadIds[] = $this->uploadMp4('movie-' . $index . '.mp4', $this->validMp4('movie ' . $index));
+        $contents = $this->validMp4('large batch fixture');
+        for ($index = 0; $index < 1000; $index++) {
+            $uploadId = (string) Str::uuid();
+            $directory = storage_path('app/bulk-video-staging/17/' . $uploadId);
+            File::makeDirectory($directory, 0750, true, true);
+            File::put($directory . '/' . $uploadId . '.mp4', $contents);
+            File::put($directory . '/meta.json', json_encode([
+                'name' => 'movie-' . $index . '.mp4',
+                'size' => strlen($contents),
+                'chunk_count' => 1,
+                'complete' => true,
+                'status' => 'uploaded',
+                'created_at' => time(),
+            ], JSON_UNESCAPED_SLASHES));
+            $uploadIds[] = $uploadId;
         }
 
         $payload = $this->batchPayload([]);
@@ -311,9 +359,9 @@ class AdminBulkVideoUploadTest extends TestCase
         $payload['upload_ids_json'] = json_encode($uploadIds);
         $this->postJson(route('admin.video.bulk.save'), $payload)
             ->assertOk()
-            ->assertJson(['status' => 200, 'count' => 100, 'queued_count' => 100]);
+            ->assertJson(['status' => 200, 'count' => 1000, 'queued_count' => 1000]);
 
-        Queue::assertPushed(ProcessBulkVideoUpload::class, 100);
+        Queue::assertPushed(ProcessBulkVideoUpload::class, 1000);
         $this->assertSame(0, Video::count());
     }
 

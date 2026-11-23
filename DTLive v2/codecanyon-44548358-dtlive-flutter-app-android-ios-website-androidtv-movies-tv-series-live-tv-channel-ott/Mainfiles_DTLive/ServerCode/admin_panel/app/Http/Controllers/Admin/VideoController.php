@@ -24,6 +24,7 @@ use Illuminate\Support\Facades\Validator;
 use Exception;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -341,7 +342,12 @@ class VideoController extends Controller
             return response()->json(['status' => 400, 'errors' => ['Only MP4 video files are supported.']], 422);
         }
 
-        $this->cleanupExpiredBulkUploads();
+        // Creating hundreds of files must not scan the full staging tree for
+        // every init request. Keep cleanup periodic and scoped to this admin.
+        $cleanupKey = 'bulk-video-staging-cleanup:' . Auth::guard('admin')->id();
+        if (Cache::add($cleanupKey, true, now()->addMinutes(10))) {
+            $this->cleanupExpiredBulkUploads();
+        }
 
         // If direct R2 is unavailable, the fallback assembler needs roughly
         // two local copies (chunks plus the assembled MP4). Refuse the upload
@@ -901,27 +907,51 @@ class VideoController extends Controller
         }
 
         $uploads = session()->get('bulk_video_uploads', []);
+        $preparedUploads = [];
         $queuedIds = [];
         $completedIds = [];
         $statusItems = [];
+        $incompleteIds = [];
         foreach ($uploadIds as $uploadId) {
             // The session is only a convenience cache. Keep the authoritative
             // receipt beside each staged file so a lost/rotated admin session
             // cannot make an already uploaded movie disappear at save time.
             $upload = $this->readBulkUpload($uploadId) ?? ($uploads[$uploadId] ?? null);
-            $videoPath = $this->bulkUploadDirectory($uploadId) . DIRECTORY_SEPARATOR . $uploadId . '.mp4';
-            $directR2 = $this->directR2UploadState($upload ?? []);
-            $hasVideo = !is_array($upload) ? false : ($directR2
-                ? !empty($upload['complete']) && !empty($directR2['completed'])
-                : is_file($videoPath) && filesize($videoPath) === $upload['size']);
-            if (!$upload || !$upload['complete'] || !$hasVideo) {
-                return response()->json(['status' => 400, 'errors' => ['Every selected video must finish uploading before the batch can be saved.']], 422);
+            if (!is_array($upload)) {
+                $incompleteIds[] = $uploadId;
+                continue;
             }
 
+            // A worker deletes the staged MP4 after successfully moving it to
+            // permanent storage. Honor its durable receipt before looking for
+            // that temporary source file, so a retried save stays idempotent.
             $status = $upload['status'] ?? 'uploaded';
             if ($status === 'completed') {
                 $completedIds[] = $uploadId;
                 $statusItems[$uploadId] = ['status' => 'completed', 'video_id' => $upload['video_id'] ?? null];
+                continue;
+            }
+            if ($status === 'processing') {
+                $queuedIds[] = $uploadId;
+                $statusItems[$uploadId] = ['status' => 'processing'];
+                continue;
+            }
+            if ($status === 'queued') {
+                // Re-dispatch a queued receipt in case the previous request
+                // died after persisting it but before enqueueing the job.
+                // ProcessBulkVideoUpload is unique per admin/upload, so an
+                // already queued or running job is not duplicated.
+                $preparedUploads[$uploadId] = $upload;
+                continue;
+            }
+
+            $videoPath = $this->bulkUploadDirectory($uploadId) . DIRECTORY_SEPARATOR . $uploadId . '.mp4';
+            $directR2 = $this->directR2UploadState($upload);
+            $hasVideo = $directR2
+                ? !empty($upload['complete']) && !empty($directR2['completed'])
+                : is_file($videoPath) && filesize($videoPath) === (int) ($upload['size'] ?? -1);
+            if (empty($upload['complete']) || !$hasVideo || !in_array($status, ['uploaded', 'failed'], true)) {
+                $incompleteIds[] = $uploadId;
                 continue;
             }
 
@@ -942,6 +972,21 @@ class VideoController extends Controller
                 'poster_filename' => 'vid_' . date('Y_m_d_') . $uploadId . '.jpg',
                 'queued_at' => now()->toIso8601String(),
             ]);
+            $preparedUploads[$uploadId] = $saveState;
+        }
+
+        // Validate the entire request before persisting state or enqueueing a
+        // single job. A late incomplete ID must not leave a half-queued batch.
+        if ($incompleteIds) {
+            return response()->json([
+                'status' => 400,
+                'errors' => ['Every selected video must finish uploading before the batch can be saved.'],
+                'incomplete_upload_ids' => $incompleteIds,
+                'incomplete_count' => count($incompleteIds),
+            ], 422);
+        }
+
+        foreach ($preparedUploads as $uploadId => $saveState) {
             $this->persistBulkUpload($uploadId, $saveState);
             try {
                 dispatch(new \App\Jobs\ProcessBulkVideoUpload($uploadId, (int) Auth::guard('admin')->id()));
