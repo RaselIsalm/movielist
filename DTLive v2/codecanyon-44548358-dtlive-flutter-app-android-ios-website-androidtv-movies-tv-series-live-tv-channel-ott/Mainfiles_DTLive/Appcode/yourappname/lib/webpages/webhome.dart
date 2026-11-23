@@ -426,13 +426,6 @@ class WebHomeState extends State<WebHome> {
           else
             SizedBox(height: Dimens.homeTabHeight),
 
-          /* Adsterra Native Banner: below the hero area, before the content feed. */
-          if (kIsWeb)
-            const AdsterraAd(
-              unit: AdsterraUnit.nativeBanner,
-              margin: EdgeInsets.symmetric(vertical: 12),
-            ),
-
           /* Continue Watching & Remaining Sections */
           if (sectionDataProvider.loadingSection &&
               !sectionDataProvider.loadMore &&
@@ -449,6 +442,15 @@ class WebHomeState extends State<WebHome> {
             ShimmerUtils.sectionPortraitListView(context)
           else
             const SizedBox.shrink(),
+
+          /* Keep the first viewport content-first; show a compact banner after it. */
+          if (kIsWeb)
+            AdsterraAd(
+              unit: Dimens.isBigScreen(context)
+                  ? AdsterraUnit.banner300x250
+                  : AdsterraUnit.banner320x50,
+              margin: const EdgeInsets.only(top: 24, bottom: 16),
+            ),
           SizedBox(height: Dimens.homeTabHeight),
         ],
       ),
