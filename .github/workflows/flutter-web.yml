@@ -82,6 +82,31 @@ jobs:
             *) BASE_HREF="/" ;;
           esac
           flutter build web --release --no-wasm-dry-run --base-href "$BASE_HREF" --dart-define-from-file="$CONFIG_FILE"
+          # Static assets are cached by the production edge. Version both the
+          # bootstrap entrypoint and Dart bundle so a new release is fetched
+          # immediately instead of waiting for the old main.dart.js TTL.
+          python3 - "$APP_DIR/build/web/index.html" "$APP_DIR/build/web/flutter_bootstrap.js" "$GITHUB_SHA" <<'PY'
+          import sys
+          from pathlib import Path
+
+          index_path = Path(sys.argv[1])
+          bootstrap_path = Path(sys.argv[2])
+          version = sys.argv[3][:12]
+
+          index = index_path.read_text()
+          index = index.replace(
+              'src="flutter_bootstrap.js"',
+              f'src="flutter_bootstrap.js?v={version}"',
+          )
+          index_path.write_text(index)
+
+          bootstrap = bootstrap_path.read_text()
+          bootstrap = bootstrap.replace(
+              '"mainJsPath":"main.dart.js"',
+              f'"mainJsPath":"main.dart.js?v={version}"',
+          )
+          bootstrap_path.write_text(bootstrap)
+          PY
           echo "APP_DIR=$APP_DIR" >> "$GITHUB_ENV"
 
       - name: Upload Pages artifact
