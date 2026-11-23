@@ -21,9 +21,10 @@
     const uploadConcurrency = 3;
     let queue = [];
     let uploading = false;
-    let saving = false;
-    let processing = false;
-    let statusTimer = null;
+    let autoSaving = false;
+    let batchTotal = 0;
+    let batchSaved = 0;
+    let redirectTimer = null;
 
     function request(url, data, onProgress, timeout) {
         return new Promise(function (resolve, reject) {
@@ -198,17 +199,24 @@
 
     let renderTimer = null;
 
+    function hasMetadata() {
+        return $('#bulk_video_title').val().trim().length >= 2
+            && $('#bulk_video_category').val()
+            && $('#bulk_video_language').val();
+    }
+
     function renderQueueNow() {
         const $list = $('#bulk_video_file_list').empty();
-        const total = queue.length;
-        const completed = queue.filter(function (item) { return item.status === 'uploaded'; }).length;
+        const pending = queue.length;
         const failed = queue.filter(function (item) { return item.status === 'failed'; }).length;
-        const saved = queue.filter(function (item) { return item.saved; }).length;
-        const serverPending = queue.filter(function (item) { return item.status === 'processing' || item.status === 'server-queued'; }).length;
-        $('#bulk_video_empty').toggle(total === 0);
+        const total = batchTotal || pending;
+        $('#bulk_video_empty').toggle(pending === 0);
         $('#bulk_video_summary').text(total
-            ? (processing ? saved + ' of ' + total + ' saved · ' + serverPending + ' uploading to R2' : completed + ' of ' + total + ' uploaded') + (failed ? ' · ' + failed + ' failed' : '')
+            ? batchSaved + ' of ' + total + ' saved automatically' + (pending ? ' · ' + pending + ' pending' : '') + (failed ? ' · ' + failed + ' failed' : '')
             : 'No files selected');
+        $('#bulk_video_auto_status').text(hasMetadata()
+            ? 'Each completed video is saved automatically and removed from this queue.'
+            : 'Enter the shared title, category, and language to start automatic saving.');
 
         queue.forEach(function (item) {
             const $row = $('<div class="border rounded p-2 mb-2"></div>');
@@ -225,20 +233,24 @@
             if (item.status === 'failed') {
                 $('<button type="button" class="btn btn-sm btn-outline-primary mr-1">Retry</button>')
                     .on('click', function () {
+                        item.autoSaveStarted = false;
                         if (item.serverFailed && item.uploadId) {
-                            retryServerUpload(item);
-                            return;
+                            item.status = 'uploaded';
+                            item.label = 'Waiting to save automatically';
+                        } else {
+                            item.status = 'queued';
+                            item.label = 'Queued';
+                            item.progress = 0;
                         }
-                        item.status = 'queued';
-                        item.label = 'Queued';
-                        item.progress = 0;
+                        item.serverFailed = false;
                         item.error = '';
                         renderQueue();
-                        processQueue();
+                        if (item.status === 'queued') processQueue();
+                        else processAutoSaveQueue();
                     })
                     .appendTo($actions);
             }
-            if (item.status !== 'uploading' && !saving && !processing) {
+            if (!['uploading', 'server-queued', 'processing', 'saving'].includes(item.status)) {
                 $('<button type="button" class="btn btn-sm btn-outline-danger">Remove</button>')
                     .on('click', function () { removeItem(item); })
                     .appendTo($actions);
@@ -260,11 +272,7 @@
             $list.append($row);
         });
 
-        const hasMetadata = $('#bulk_video_title').val().trim().length >= 2
-            && $('#bulk_video_category').val()
-            && $('#bulk_video_language').val();
-        $('#save_bulk_videos').prop('disabled', saving || processing || uploading || !total || completed !== total || !hasMetadata);
-        $('#bulk_video_files').prop('disabled', saving || processing);
+        $('#bulk_video_files').prop('disabled', false);
     }
 
     function renderQueue() {
@@ -273,6 +281,124 @@
             renderTimer = null;
             renderQueueNow();
         }, 50);
+    }
+
+    function wait(milliseconds) {
+        return new Promise(function (resolve) { window.setTimeout(resolve, milliseconds); });
+    }
+
+    function maybeRedirectAfterBatch() {
+        if (batchTotal > 0 && batchSaved === batchTotal && queue.length === 0 && !uploading && !redirectTimer) {
+            toastr.success(batchSaved + ' video' + (batchSaved === 1 ? '' : 's') + ' uploaded successfully.');
+            redirectTimer = window.setTimeout(function () {
+                window.location.replace(config.indexUrl);
+            }, 900);
+        }
+    }
+
+    function finishAutomaticallySavedItem(item) {
+        if (item.saved) return;
+        item.saved = true;
+        item.autoSaveStarted = false;
+        item.status = 'saved';
+        item.label = 'Saved to server';
+        item.progress = 100;
+        item.error = '';
+        batchSaved += 1;
+        if (item.posterUrl) URL.revokeObjectURL(item.posterUrl);
+        queue = queue.filter(function (candidate) { return candidate.key !== item.key; });
+        renderQueue();
+
+        maybeRedirectAfterBatch();
+    }
+
+    async function pollAutomaticallySavedItem(item) {
+        // Keep checking the durable receipt without requiring the user to
+        // click Save again. A hard limit prevents a permanently stuck spinner.
+        for (let attempt = 0; attempt < 180; attempt++) {
+            const body = new FormData();
+            body.append('upload_ids_json', JSON.stringify([item.uploadId]));
+            const response = await request(config.statusUrl, body, null, 120000);
+            const state = response.items && response.items[item.uploadId]
+                ? response.items[item.uploadId]
+                : { status: 'queued' };
+            if (state.status === 'completed') {
+                finishAutomaticallySavedItem(item);
+                return;
+            }
+            if (state.status === 'failed' || state.status === 'missing') {
+                throw new Error(state.error || 'The server could not finish this video.');
+            }
+            item.status = state.status === 'processing' ? 'processing' : 'server-queued';
+            item.label = state.status === 'processing' ? 'Saving to server' : 'Queued for server save';
+            renderQueue();
+            await wait(2000);
+        }
+        throw new Error('The server is taking too long to finish this video. Retry it from the queue.');
+    }
+
+    async function autoSaveItem(item) {
+        if (!hasMetadata() || !item.uploadId || item.autoSaveStarted) return;
+        if (String(config.demoMode) !== '1') {
+            item.status = 'failed';
+            item.serverFailed = true;
+            item.error = 'Automatic saving is unavailable while demo mode is disabled.';
+            renderQueue();
+            return;
+        }
+
+        item.autoSaveStarted = true;
+        item.status = 'saving';
+        item.label = 'Saving automatically';
+        item.error = '';
+        renderQueue();
+
+        const body = new FormData();
+        body.append('_token', config.csrf);
+        body.append('title', $('#bulk_video_title').val().trim());
+        body.append('type_id', config.typeId);
+        body.append('category_id', $('#bulk_video_category').val());
+        body.append('language_id', $('#bulk_video_language').val());
+        body.append('upload_ids_json', JSON.stringify([item.uploadId]));
+
+        try {
+            const response = await request(config.saveUrl, body, null, 120000);
+            const state = response.items && response.items[item.uploadId]
+                ? response.items[item.uploadId]
+                : null;
+            if (state && state.status === 'completed') {
+                finishAutomaticallySavedItem(item);
+            } else {
+                await pollAutomaticallySavedItem(item);
+            }
+        } catch (error) {
+            item.autoSaveStarted = false;
+            item.status = 'failed';
+            item.serverFailed = true;
+            item.label = 'Automatic save failed';
+            item.error = error.message || 'Unable to save this video automatically. Retry it.';
+            renderQueue();
+        }
+    }
+
+    async function processAutoSaveQueue() {
+        if (autoSaving || !hasMetadata()) {
+            renderQueue();
+            return;
+        }
+        const item = queue.find(function (candidate) {
+            return candidate.status === 'uploaded' && candidate.uploadId && !candidate.autoSaveStarted;
+        });
+        if (!item) {
+            renderQueue();
+            maybeRedirectAfterBatch();
+            return;
+        }
+        autoSaving = true;
+        await autoSaveItem(item);
+        autoSaving = false;
+        renderQueue();
+        processAutoSaveQueue();
     }
 
     async function uploadItem(item) {
@@ -371,13 +497,16 @@
         }
 
         item.status = 'uploaded';
-        item.label = poster ? 'Ready to save' : 'Uploaded · server will create preview';
+        item.label = hasMetadata()
+            ? 'Waiting to save automatically'
+            : 'Uploaded · waiting for shared details';
         item.progress = 100;
         renderQueue();
+        processAutoSaveQueue();
     }
 
     async function processQueue() {
-        if (uploading || saving || processing) return;
+        if (uploading) return;
         uploading = true;
         renderQueue();
         async function worker() {
@@ -401,6 +530,7 @@
         await Promise.all(workers);
         uploading = false;
         renderQueue();
+        processAutoSaveQueue();
     }
 
     async function removeItem(item) {
@@ -412,171 +542,6 @@
         if (item.posterUrl) URL.revokeObjectURL(item.posterUrl);
         queue = queue.filter(function (candidate) { return candidate.key !== item.key; });
         renderQueue();
-    }
-
-    async function retryServerUpload(item) {
-        if (saving || processing) return;
-        saving = true;
-        item.status = 'server-queued';
-        item.label = 'Re-queueing on server';
-        item.error = '';
-        renderQueue();
-
-        const body = new FormData();
-        body.append('_token', config.csrf);
-        body.append('title', $('#bulk_video_title').val().trim());
-        body.append('type_id', config.typeId);
-        body.append('category_id', $('#bulk_video_category').val());
-        body.append('language_id', $('#bulk_video_language').val());
-        body.append('upload_ids_json', JSON.stringify([item.uploadId]));
-        try {
-            const response = await request(config.saveUrl, body, null, 120000);
-            saving = false;
-            processing = true;
-            item.serverFailed = false;
-            $('#dvloader').hide();
-            applyServerStatus(response.items || {});
-            renderQueue();
-            pollServerStatus();
-        } catch (error) {
-            saving = false;
-            item.status = 'failed';
-            item.serverFailed = true;
-            item.error = error.message || 'Unable to re-queue this video.';
-            renderQueue();
-        }
-    }
-
-    function applyServerStatus(items) {
-        let pending = false;
-        let failed = false;
-        queue.forEach(function (item) {
-            if (!item.uploadId || item.saved) return;
-            const state = items[item.uploadId] || { status: 'queued' };
-            if (state.status === 'completed') {
-                item.saved = true;
-                item.status = 'uploaded';
-                item.label = 'Saved to R2';
-                item.progress = 100;
-                item.error = '';
-            } else if (state.status === 'failed' || state.status === 'missing') {
-                item.status = 'failed';
-                item.serverFailed = state.status === 'failed';
-                item.label = state.status === 'missing' ? 'Server receipt missing' : 'R2 upload failed';
-                item.error = state.error || 'The server could not finish this video. Retry it.';
-                failed = true;
-            } else {
-                item.serverFailed = false;
-                item.status = state.status === 'processing' ? 'processing' : 'server-queued';
-                item.label = state.status === 'processing' ? 'Uploading to R2' : 'Queued on server';
-                pending = true;
-            }
-        });
-        return { pending: pending, failed: failed };
-    }
-
-    function finishServerBatch() {
-        processing = false;
-        const saved = queue.filter(function (item) { return item.saved; }).length;
-        const failed = queue.filter(function (item) { return item.status === 'failed'; }).length;
-        $('#dvloader').hide();
-        renderQueue();
-        if (!failed && saved === queue.length) {
-            toastr.success(saved + ' videos saved to R2 successfully.');
-            window.setTimeout(function () { window.location.replace(config.indexUrl); }, 800);
-        } else if (failed) {
-            toastr.error(saved + ' of ' + queue.length + ' videos saved. Retry the failed rows.');
-        }
-    }
-
-    async function pollServerStatus() {
-        if (!processing) return;
-        const ids = queue.filter(function (item) { return item.uploadId && !item.saved; }).map(function (item) { return item.uploadId; });
-        if (!ids.length) {
-            finishServerBatch();
-            return;
-        }
-
-        const body = new FormData();
-        body.append('upload_ids_json', JSON.stringify(ids));
-        try {
-            const response = await request(config.statusUrl, body, null, 120000);
-            const result = applyServerStatus(response.items || {});
-            renderQueue();
-            if (result.pending) {
-                statusTimer = window.setTimeout(pollServerStatus, 2000);
-            } else {
-                finishServerBatch();
-            }
-        } catch (error) {
-            // A temporary status request failure must not stop the worker or
-            // make the browser re-upload files that are already on the server.
-            statusTimer = window.setTimeout(pollServerStatus, 3000);
-        }
-    }
-
-    async function saveBatch() {
-        if (saving || !queue.length) return;
-        if (String(config.demoMode) !== '1') {
-            showError();
-            return;
-        }
-        const title = $('#bulk_video_title').val().trim();
-        const categoryId = $('#bulk_video_category').val();
-        const languageId = $('#bulk_video_language').val();
-        if (title.length < 2 || !categoryId || !languageId) {
-            toastr.error('Enter a title and select a category and language for this batch.');
-            return;
-        }
-        if (!queue.every(function (item) { return item.status === 'uploaded' && item.uploadId; })) {
-            toastr.error('Retry or remove each failed upload before saving the batch.');
-            return;
-        }
-
-        saving = true;
-        renderQueue();
-        $('#dvloader').show();
-
-        try {
-            const body = new FormData();
-            body.append('_token', config.csrf);
-            body.append('title', title);
-            body.append('type_id', config.typeId);
-            body.append('category_id', categoryId);
-            body.append('language_id', languageId);
-            body.append('upload_ids_json', JSON.stringify(queue.map(function (item) { return item.uploadId; })));
-            const response = await request(config.saveUrl, body, null, 120000);
-            saving = false;
-            processing = true;
-            $('#dvloader').hide();
-            applyServerStatus(response.items || {});
-            renderQueue();
-            pollServerStatus();
-        } catch (error) {
-            $('#dvloader').hide();
-            const incompleteIds = error.response && Array.isArray(error.response.incomplete_upload_ids)
-                ? error.response.incomplete_upload_ids
-                : [];
-            if (incompleteIds.length) {
-                queue.forEach(function (item) {
-                    if (incompleteIds.indexOf(item.uploadId) !== -1) {
-                        item.status = 'failed';
-                        item.label = 'Server needs this upload retried';
-                        item.error = 'The server could not confirm the complete uploaded file. Retry this file.';
-                    }
-                });
-                toastr.error(incompleteIds.length + ' upload' + (incompleteIds.length === 1 ? ' was' : 's were') + ' not confirmed by the server. Retry the marked file' + (incompleteIds.length === 1 ? '' : 's') + '; no videos in this batch were queued.');
-                saving = false;
-                processing = false;
-                renderQueue();
-                return;
-            }
-            const saved = queue.filter(function (item) { return item.saved; }).length;
-            toastr.error((error.message || 'Unable to save the next video.') + ' ' + saved + ' of ' + queue.length + ' are saved. Click Save batch to safely continue.');
-            saving = false;
-            processing = false;
-            renderQueue();
-        }
     }
 
     $(function () {
@@ -608,13 +573,16 @@
                     progress: 0,
                     error: ''
                 });
+                batchTotal += 1;
             });
             event.target.value = '';
             renderQueue();
             processQueue();
         });
-        $('#bulk_video_title, #bulk_video_category, #bulk_video_language').on('input change', renderQueue);
-        $('#save_bulk_videos').on('click', saveBatch);
+        $('#bulk_video_title, #bulk_video_category, #bulk_video_language').on('input change', function () {
+            renderQueue();
+            processAutoSaveQueue();
+        });
         renderQueue();
     });
 })(jQuery);

@@ -92,7 +92,7 @@
                             <div class="form-group mb-0">
                                 <label for="bulk_video_files">Choose MP4 videos <span class="text-danger">*</span></label>
                                 <input type="file" id="bulk_video_files" class="form-control" accept=".mp4,video/mp4" multiple>
-                                <small class="form-text text-muted">Uploads start in parallel. Save queues the completed files on the server; R2 transfer continues in the background and can be retried per video.</small>
+                                <small class="form-text text-muted">Uploads start automatically. After each file completes, it is saved to the server automatically and removed from this queue.</small>
                             </div>
                         </div>
                     </div>
@@ -107,7 +107,7 @@
                             <div id="bulk_video_empty" class="text-muted">Select one or more MP4 files to begin.</div>
                         </div>
                         <div class="card-footer">
-                            <button type="button" class="btn btn-default mw-120" id="save_bulk_videos" disabled><i class="fa-solid fa-floppy-disk fa-lg mr-2"></i>{{__('label.save')}} batch</button>
+                            <span id="bulk_video_auto_status" class="text-muted">Each completed video is saved automatically.</span>
                             <a href="{{route('admin.video.index', ['type_id' => $type['id']])}}" class="btn btn-cancel mw-120 ml-2">{{__('label.cancel')}}</a>
                         </div>
                     </div>
@@ -688,7 +688,7 @@
     <script src="{{ asset('/assets/js/plupload.full.min.js')}}"></script>
     <script src="{{ asset('/assets/js/common.js')}}"></script>
     @if($type['type'] == 1)
-        <script src="{{ asset('/assets/js/bulk-video-upload-20261123.js?v=20261123-bulk10') }}"></script>
+        <script src="{{ asset('/assets/js/bulk-video-upload-20261123.js?v=20261124-bulk11') }}"></script>
     @endif
 
     <script>
