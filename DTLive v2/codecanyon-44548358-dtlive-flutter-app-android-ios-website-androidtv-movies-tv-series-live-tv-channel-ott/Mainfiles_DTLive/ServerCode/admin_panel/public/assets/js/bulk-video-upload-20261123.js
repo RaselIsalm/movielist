@@ -480,7 +480,7 @@
         }
 
         if (!finalChunkReceipt || finalChunkReceipt.complete !== true) {
-            throw new Error('The server has not confirmed that this video is complete. Retry this file before saving the batch.');
+            throw new Error('The server has not confirmed that this video is complete. Retry this file before automatic saving.');
         }
 
         item.label = 'Finishing upload';
