@@ -8,7 +8,8 @@ DirectoryIndex index.html
     RewriteRule ^api(?:/|$) index.php [L]
     RewriteRule ^admin(?:/|$) index.php [L]
     RewriteRule ^(?:details|shorts|page)(?:/|$) index.php [L]
-    RewriteRule ^sitemap\.xml$ index.php [L]
+    # Keep the public sitemap file below available without a redirect. The
+    # dynamic, database-backed sitemap is exposed at /api/sitemap.xml.
 
     # Never serve Firebase service-account material from the public web root.
     RewriteRule (^|/).*firebase_service_account.*\.json$ - [F,L,NC]
