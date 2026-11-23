@@ -36,6 +36,7 @@ use App\Http\Controllers\Admin\SectionController;
 use App\Http\Controllers\Admin\SystemSettingController;
 use App\Http\Controllers\Admin\TVShowController;
 use App\Http\Controllers\Admin\AdmobSettingController;
+use App\Http\Controllers\Admin\AdSlotController;
 use App\Http\Controllers\Admin\AppSettingController;
 use App\Http\Controllers\Admin\NotificationConfigurationController;
 use App\Http\Controllers\Admin\PanelSettingController;
@@ -190,6 +191,8 @@ Route::group(['middleware' => 'installation'], function () {
         Route::post('admob/status', [AdmobSettingController::class, 'admobStatus'])->name('admob.status');
         Route::post('admob/android', [AdmobSettingController::class, 'admobAndroid'])->name('admob.android');
         Route::post('admob/ios', [AdmobSettingController::class, 'admobIos'])->name('admob.ios');
+        // Managed image/link ad placements
+        Route::resource('adslots', AdSlotController::class)->only(['index', 'store', 'update', 'destroy', 'show']);
         // App Setting
         Route::get('app-setting', [AppSettingController::class, 'index'])->name('appsetting');
         Route::post('app-setting/app', [AppSettingController::class, 'app'])->name('appsetting.app');

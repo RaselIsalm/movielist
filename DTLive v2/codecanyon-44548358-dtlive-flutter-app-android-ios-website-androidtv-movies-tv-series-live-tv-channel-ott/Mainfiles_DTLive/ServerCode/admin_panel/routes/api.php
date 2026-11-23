@@ -12,6 +12,7 @@
 */
 
 use App\Http\Controllers\Api\HomeController;
+use App\Http\Controllers\Api\AdSlotController;
 use App\Http\Controllers\Api\SeoController;
 use App\Http\Controllers\Api\TelemetryController;
 use App\Http\Controllers\Api\UserController;
@@ -33,12 +34,18 @@ Route::post('telemetry/events', [TelemetryController::class, 'store'])
     ->middleware('throttle:api')
     ->name('api.telemetry.events');
 
+// Public placement configuration. Only active, scheduled creatives are
+// returned; catalog and account APIs remain protected below.
+Route::post('ad_slots', [AdSlotController::class, 'index'])
+    ->middleware('throttle:api')
+    ->name('api.ad_slots');
+
 // Serve catalog files through the API middleware stack so Flutter Web receives
 // same-origin responses. Cloud disks are streamed with HTTP Range support;
 // this is required for private R2 buckets because their presigned responses
 // do not include browser CORS headers.
 Route::get('media/{folder}/{filename}', function (Request $request, string $folder, string $filename) {
-    $publicFolders = ['app', 'avatar', 'cast', 'category', 'channel', 'content', 'language', 'notification', 'type', 'user'];
+    $publicFolders = ['ad', 'app', 'avatar', 'cast', 'category', 'channel', 'content', 'language', 'notification', 'type', 'user'];
 
     abort_unless(in_array($folder, $publicFolders, true), 404);
     abort_unless(basename($filename) === $filename && $filename !== '.' && $filename !== '..', 404);

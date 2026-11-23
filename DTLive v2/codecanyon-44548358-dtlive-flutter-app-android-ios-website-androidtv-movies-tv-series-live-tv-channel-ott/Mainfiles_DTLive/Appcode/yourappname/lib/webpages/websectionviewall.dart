@@ -19,6 +19,7 @@ import '../utils/color.dart';
 import '../widget/mynetworkimg.dart';
 import '../webwidget/web_hover_card.dart';
 import '../webwidget/web_content_with_ad_rail.dart';
+import '../webwidget/ad_slot_banner.dart';
 
 class WebSectionViewAll extends StatefulWidget {
   final int sectionId, videoType;
@@ -217,6 +218,7 @@ class WebSectionViewAllState extends State<WebSectionViewAll> {
               SizedBox(height: Dimens.homeTabHeight),
               _buildAppbar(),
               WebContentWithAdRail(child: content),
+              const AdSlotBanner(slotKey: 'category.results_below'),
               const AdsterraAd(
                 unit: AdsterraUnit.nativeBanner,
                 margin: EdgeInsets.symmetric(vertical: 16),
@@ -297,13 +299,18 @@ class WebSectionViewAllState extends State<WebSectionViewAll> {
                       sectionViewAllProvider.sectionDetailList?[position].id ??
                       0,
                   subVideoType:
-                      sectionViewAllProvider.sectionDetailList?[position]
-                              .subVideoType ??
-                          0,
-                  videoType: sectionViewAllProvider.sectionDetailList?[position]
+                      sectionViewAllProvider
+                          .sectionDetailList?[position]
+                          .subVideoType ??
+                      0,
+                  videoType:
+                      sectionViewAllProvider
+                          .sectionDetailList?[position]
                           .videoType ??
                       0,
-                  typeId: sectionViewAllProvider.sectionDetailList?[position]
+                  typeId:
+                      sectionViewAllProvider
+                          .sectionDetailList?[position]
                           .typeId ??
                       0,
                   newPage: RoutesConstant.contentDetailsPage,
@@ -370,36 +377,40 @@ class WebSectionViewAllState extends State<WebSectionViewAll> {
             WebHoverCard(
               cardW: cardW,
               cardH: cardH,
-            borderRadius: Dimens.cardRadiusMedium,
-            imageUrl:
-                  sectionViewAllProvider.sectionDetailList?[position].landscapeImg
+              borderRadius: Dimens.cardRadiusMedium,
+              imageUrl:
+                  sectionViewAllProvider
+                      .sectionDetailList?[position]
+                      .landscapeImg
                       .toString() ??
                   "",
-            onTap: () async {
-              printLog("Clicked on position ==> $position");
-              final videoByIDProvider = Provider.of<VideoByIDProvider>(
-                context,
-                listen: false,
-              );
-              videoByIDProvider.setLoading(true);
-              if (!mounted) return;
-              context.go(
-                "/${RoutesConstant.videoByChannelPage}/${sectionViewAllProvider.sectionDetailList?[position].id ?? 0}",
-                extra: {
-                  'newpage': widget.newPage.toString(),
-                  'itemid':
-                      (sectionViewAllProvider.sectionDetailList?[position].id ??
-                              0)
-                          .toString(),
-                  'title':
-                      sectionViewAllProvider
-                          .sectionDetailList?[position]
-                          .name ??
-                      '',
-                  'layouttype': 'ByChannel',
-                },
-              );
-            },
+              onTap: () async {
+                printLog("Clicked on position ==> $position");
+                final videoByIDProvider = Provider.of<VideoByIDProvider>(
+                  context,
+                  listen: false,
+                );
+                videoByIDProvider.setLoading(true);
+                if (!mounted) return;
+                context.go(
+                  "/${RoutesConstant.videoByChannelPage}/${sectionViewAllProvider.sectionDetailList?[position].id ?? 0}",
+                  extra: {
+                    'newpage': widget.newPage.toString(),
+                    'itemid':
+                        (sectionViewAllProvider
+                                    .sectionDetailList?[position]
+                                    .id ??
+                                0)
+                            .toString(),
+                    'title':
+                        sectionViewAllProvider
+                            .sectionDetailList?[position]
+                            .name ??
+                        '',
+                    'layouttype': 'ByChannel',
+                  },
+                );
+              },
             ),
           );
           if (position == 5) {

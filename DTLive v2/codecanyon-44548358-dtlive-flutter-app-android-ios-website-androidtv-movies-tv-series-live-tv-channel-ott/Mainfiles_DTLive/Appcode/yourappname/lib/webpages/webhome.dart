@@ -42,6 +42,8 @@ import '../widget/content_section_widget.dart';
 import '../widget/genre_language_section_widget.dart';
 import '../widget/shorts_section_widget.dart';
 import '../ads/adsterra_ad.dart';
+import '../provider/adslotprovider.dart';
+import '../webwidget/ad_slot_banner.dart';
 import '../analytics/first_party_telemetry.dart';
 
 class WebHome extends StatefulWidget {
@@ -94,6 +96,7 @@ class WebHomeState extends State<WebHome> {
       context,
       listen: false,
     );
+    unawaited(Provider.of<AdSlotProvider>(context, listen: false).load());
 
     final statusFuture = Future.wait([
       Utils.configByStatus(status: Constant.subscriptionStatus),
@@ -482,7 +485,11 @@ class WebHomeState extends State<WebHome> {
           else
             SizedBox(height: Dimens.homeTabHeight),
 
+          /* Content-managed header placement; empty until configured. */
+          const AdSlotBanner(slotKey: 'home.header_below'),
+
           /* Continue Watching & Remaining Sections */
+          const AdSlotBanner(slotKey: 'home.for_you_below'),
           if (sectionDataProvider.loadingSection &&
               !sectionDataProvider.loadMore &&
               (sectionDataProvider.sectionList?.isEmpty ?? true))
@@ -1578,6 +1585,9 @@ class WebHomeState extends State<WebHome> {
                       ),
                     ),
                     SizedBox(height: Dimens.isBigScreen(context) ? 40 : 25),
+                    AdSlotBanner(
+                      slotKey: _sectionAdKey(sectionList[index], index),
+                    ),
                   ],
                 );
               } else {
@@ -1632,6 +1642,19 @@ class WebHomeState extends State<WebHome> {
         );
       },
     );
+  }
+
+  String _sectionAdKey(list.Result item, int index) {
+    final title = (item.title ?? '').toLowerCase();
+    if (title.contains('recent')) return 'home.recently_added_below';
+    if (title.contains('explore')) return 'home.more_to_explore_below';
+    if (title.contains('collection')) return 'home.browse_collections_below';
+    if (title.contains('audio')) return 'home.browse_audio_below';
+    if (title.contains('clip') || title.contains('short'))
+      return 'home.clips_below';
+    return index == 0
+        ? 'home.recently_added_below'
+        : 'home.more_to_explore_below';
   }
 
   Widget _buildTitleViewAll({

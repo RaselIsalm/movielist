@@ -17,6 +17,7 @@ import '../provider/videobyidprovider.dart';
 import '../utils/color.dart';
 import '../widget/mynetworkimg.dart';
 import '../webwidget/web_hover_card.dart';
+import '../webwidget/ad_slot_banner.dart';
 
 class WebVideosByID extends StatefulWidget {
   final String? newPage, oldPage;
@@ -90,6 +91,7 @@ class WebVideosByIDState extends State<WebVideosByID> {
         _buildAppbar(),
         _buildCastDetails(),
         _buildContentItem(),
+        const AdSlotBanner(slotKey: 'category.results_below'),
         /* Pagination loader */
         Consumer<VideoByIDProvider>(
           builder: (context, videoByIDProvider, child) {

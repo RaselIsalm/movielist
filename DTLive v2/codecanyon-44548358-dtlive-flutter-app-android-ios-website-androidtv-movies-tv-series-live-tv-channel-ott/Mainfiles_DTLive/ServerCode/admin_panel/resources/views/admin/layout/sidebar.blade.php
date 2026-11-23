@@ -95,6 +95,12 @@
                 <span>{{__('label.section')}}</span>
             </a>
         </li>
+        <li class="side_line {{ request()->routeIs('admin.adslots*') ? 'active' : '' }}">
+            <a href="{{ route('admin.adslots.index') }}">
+                <i class="fa-solid fa-rectangle-ad fa-xl menu-icon"></i>
+                <span>Ad slots</span>
+            </a>
+        </li>
 
         <p class="partition"><span>{{__('label.content')}}</span></p>
         <?php $type = Get_Type_List(); ?>

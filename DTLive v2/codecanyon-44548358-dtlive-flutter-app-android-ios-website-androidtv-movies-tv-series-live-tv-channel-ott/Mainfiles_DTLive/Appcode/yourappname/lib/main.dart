@@ -31,6 +31,7 @@ import '../pages/contentshowdetails.dart';
 import '../pages/contentvideodetails.dart';
 import '../pages/splash.dart';
 import '../provider/avatarprovider.dart';
+import '../provider/adslotprovider.dart';
 import '../provider/bottombarprovider.dart';
 import '../provider/connectivityprovider.dart';
 import '../provider/myspaceprovider.dart';
@@ -193,6 +194,7 @@ Future<void> main() async {
         ChangeNotifierProvider(create: (_) => SearchProvider()),
         ChangeNotifierProvider(create: (_) => SectionByTypeProvider()),
         ChangeNotifierProvider(create: (_) => SectionDataProvider()),
+        ChangeNotifierProvider(create: (_) => AdSlotProvider()),
         ChangeNotifierProvider(create: (_) => ShowDetailsProvider()),
         ChangeNotifierProvider(create: (_) => EpisodeProvider()),
         ChangeNotifierProvider(create: (_) => ClipsProvider()),

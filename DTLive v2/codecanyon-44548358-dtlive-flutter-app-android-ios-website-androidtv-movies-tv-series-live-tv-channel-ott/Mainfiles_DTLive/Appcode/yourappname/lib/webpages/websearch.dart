@@ -12,6 +12,7 @@ import '../utils/utils.dart';
 import '../webpages/webcomman.dart';
 import '../widget/myimage.dart';
 import '../webwidget/web_hover_card.dart';
+import '../webwidget/ad_slot_banner.dart';
 import '../widget/mytext.dart';
 import '../widget/nodata.dart';
 import '../webwidget/safesearchbar.dart';
@@ -111,6 +112,7 @@ class WebSearchState extends State<WebSearch> {
           ),
         ),
         _buildSearchData(),
+        const AdSlotBanner(slotKey: 'search.results_below'),
         const AdsterraAd(
           unit: AdsterraUnit.banner320x50,
           margin: EdgeInsets.symmetric(vertical: 16),
@@ -216,9 +218,11 @@ class WebSearchState extends State<WebSearch> {
             runSpacing: Dimens.isBigScreen(context) ? 16 : 10,
             alignment: WrapAlignment.start,
             children: [
-              for (var position = 0;
-                  position < (findProvider.searchDataList?.length ?? 0);
-                  position++) ...[
+              for (
+                var position = 0;
+                position < (findProvider.searchDataList?.length ?? 0);
+                position++
+              ) ...[
                 _buildVideoContent(position: position),
                 if (position == 5)
                   const AdsterraAd(

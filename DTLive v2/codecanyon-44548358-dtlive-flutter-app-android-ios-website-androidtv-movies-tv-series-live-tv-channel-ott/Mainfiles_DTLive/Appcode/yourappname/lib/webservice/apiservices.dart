@@ -41,6 +41,7 @@ import '../model/wallettransactionmodel.dart';
 import '../model/rentmodel.dart';
 import '../model/searchmodel.dart';
 import '../model/sectionbannermodel.dart';
+import '../model/adslotmodel.dart';
 import '../model/contentdetailmodel.dart' as contentdetails;
 import '../model/episodebyseasonmodel.dart' as episode;
 import '../model/clipepisodesmodel.dart' as shortsepisode;
@@ -84,6 +85,30 @@ class ApiService {
         // );
       }
     }
+  }
+
+  Future<Map<String, List<AdCreative>>> getAdSlots() async {
+    final response = await dio.post(
+      'ad_slots',
+      options: optHeaders,
+      data: {'platform': kIsWeb ? 'web' : 'app'},
+    );
+    final raw = response.data is Map ? response.data['result'] : null;
+    final result = <String, List<AdCreative>>{};
+    if (raw is Map) {
+      raw.forEach((key, value) {
+        if (value is List) {
+          result[key.toString()] = value
+              .whereType<Map>()
+              .map(
+                (item) => AdCreative.fromJson(Map<String, dynamic>.from(item)),
+              )
+              .where((item) => item.image.isNotEmpty)
+              .toList();
+        }
+      });
+    }
+    return result;
   }
 
   /* VideoCipher OTP generation START ************* */
@@ -2243,4 +2268,5 @@ Future<void> prepareShowDownload(
     Utils.showToast(Locales.string(context, "download_failed"));
   }
 }
+
 /* ========================== Download Shows ========================== */

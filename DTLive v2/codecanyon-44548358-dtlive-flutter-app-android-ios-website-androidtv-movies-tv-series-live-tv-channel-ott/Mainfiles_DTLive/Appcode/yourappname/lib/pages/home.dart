@@ -45,6 +45,7 @@ import '../widget/ai_section_widget.dart';
 import '../widget/content_section_widget.dart';
 import '../widget/genre_language_section_widget.dart';
 import '../widget/shorts_section_widget.dart';
+import '../webwidget/ad_slot_banner.dart';
 
 class Home extends StatefulWidget {
   final String? pageName;
@@ -1018,6 +1019,7 @@ class HomeState extends State<Home> {
 
         /* Banner Ad */
         SmartBannerAd(isSpacing: true, topSpace: 10, bottomSpace: 10),
+        const AdSlotBanner(slotKey: 'home.header_below'),
 
         /* Remaining Sections */
         if (sectionDataProvider.loadingSection && !sectionDataProvider.loadMore)
@@ -1362,11 +1364,15 @@ class HomeState extends State<Home> {
           sectionList,
           index,
         ),
-        child: ShimmerUtils.setHomeSections(context, item.screenLayout ?? 'landscape'),
+        child: ShimmerUtils.setHomeSections(
+          context,
+          item.screenLayout ?? 'landscape',
+        ),
       );
     }
     if (item.videoType == Constant.continueWatchType &&
-        continueWatchingStatus != null && continueWatchingStatus != '1') {
+        continueWatchingStatus != null &&
+        continueWatchingStatus != '1') {
       return const SizedBox.shrink();
     }
     if (item.sectionType == Constant.aiContentType) {
@@ -1381,7 +1387,10 @@ class HomeState extends State<Home> {
             datum.typeId ?? 0,
           ),
           onViewAllTap: () async {
-            final sectionViewAllProvider = Provider.of<SectionViewAllProvider>(context, listen: false);
+            final sectionViewAllProvider = Provider.of<SectionViewAllProvider>(
+              context,
+              listen: false,
+            );
             if (item.viewAll == 1) {
               sectionViewAllProvider.setLoading(true);
               if (!context.mounted) return;
@@ -1409,7 +1418,10 @@ class HomeState extends State<Home> {
           sectionList: sectionList,
           index: index,
           onViewAllClick: () async {
-            final sectionViewAllProvider = Provider.of<SectionViewAllProvider>(context, listen: false);
+            final sectionViewAllProvider = Provider.of<SectionViewAllProvider>(
+              context,
+              listen: false,
+            );
             if (item.viewAll == 1) {
               sectionViewAllProvider.setLoading(true);
               if (!context.mounted) return;

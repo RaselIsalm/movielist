@@ -20,6 +20,7 @@ import '../players/model/vdociphermodel.dart' hide Result;
 import '../provider/videobyidprovider.dart';
 import '../routes/routes_constant.dart';
 import '../webwidget/interactive_icon.dart';
+import '../webwidget/ad_slot_banner.dart';
 import '../model/contentdetailmodel.dart';
 import '../shimmer/shimmerutils.dart';
 import '../webpages/webcomman.dart';
@@ -1692,6 +1693,7 @@ class WebContentShowDetailsState extends State<WebContentShowDetails>
           if (widget.videoType != Constant.upcomingContentType)
             _buildRentExpiryTAG(),
           _buildStatsRow(item),
+          const AdSlotBanner(slotKey: 'details.action_below'),
           if (kIsWeb)
             AdsterraAd(
               unit: Dimens.isBigScreen(context)
@@ -1707,6 +1709,7 @@ class WebContentShowDetailsState extends State<WebContentShowDetails>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _buildRatingReviewCard(),
+                  const AdSlotBanner(slotKey: 'details.related_below'),
                   RelatedVideoShow(
                     relatedDataList: sdp.relatedContentModel.result,
                     newPage: widget.newPage,
