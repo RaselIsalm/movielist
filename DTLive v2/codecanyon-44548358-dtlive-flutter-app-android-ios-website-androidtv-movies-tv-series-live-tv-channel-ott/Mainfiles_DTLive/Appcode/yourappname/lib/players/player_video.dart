@@ -70,6 +70,11 @@ class _PlayerVideoState extends State<PlayerVideo>
   late VideoPlayerController _videoPlayerController;
   bool _isControllerReady =
       false; // [FIX] guards all controller access before init
+  // Chrome/Safari may reject an autoplay request that is made after the
+  // player route has finished navigating. A muted retry lets the first frame
+  // start without leaving the poster frozen on screen.
+  bool _autoplayMuted = false;
+  String? _activeVideoUrl;
   bool _showControls = true;
   Timer? _hideTimer;
   double _playbackSpeed = 1.0;
@@ -253,8 +258,11 @@ class _PlayerVideoState extends State<PlayerVideo>
     playerProvider.notifyProvider();
 
     if (_isControllerReady && _videoPlayerController.value.isInitialized) {
-      // [FIX]
-      await _videoPlayerController.play();
+      final didStart = await _playVideo();
+      if (!didStart) {
+        printLog("Player: content play failed after initialization");
+        return;
+      }
       startDurationTimer();
       // Restart progress updates so future mid-roll cue points advance.
       _startContentProgressUpdates();
@@ -268,6 +276,55 @@ class _PlayerVideoState extends State<PlayerVideo>
           viewport: kIsWeb ? 'web' : 'native',
         );
       }
+    }
+  }
+
+  /// Starts the content player and handles browser autoplay restrictions.
+  ///
+  /// A route transition can consume the original tap gesture before the
+  /// video element is initialized. In that case browsers reject audible
+  /// playback. Retrying muted is the only browser-safe fallback; a later
+  /// user-initiated play request restores audio in [_playVideo].
+  Future<bool> _playVideo({bool userInitiated = false}) async {
+    if (!_isControllerReady || !_videoPlayerController.value.isInitialized) {
+      return false;
+    }
+
+    if (userInitiated && _autoplayMuted) {
+      try {
+        await _videoPlayerController.setVolume(1.0);
+        _autoplayMuted = false;
+      } catch (error) {
+        printLog("Player: failed to restore audio after muted autoplay: $error");
+      }
+    }
+
+    try {
+      await _videoPlayerController.play();
+      // Some web engines resolve play() before updating the Flutter value.
+      // Give the element one event-loop turn, then use the muted fallback if
+      // the request was silently rejected.
+      if (kIsWeb && !userInitiated) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      if (!kIsWeb || userInitiated || _videoPlayerController.value.isPlaying) {
+        return true;
+      }
+      printLog("Player: web play resolved without starting playback");
+    } catch (error) {
+      printLog("Player: play request rejected: $error");
+    }
+
+    if (!kIsWeb || userInitiated) return false;
+    try {
+      await _videoPlayerController.setVolume(0.0);
+      await _videoPlayerController.play();
+      _autoplayMuted = true;
+      printLog("Player: resumed with muted web autoplay fallback");
+      return true;
+    } catch (mutedError) {
+      printLog("Player: muted autoplay fallback failed: $mutedError");
+      return false;
     }
   }
   /* IMA Ads END */
@@ -573,7 +630,7 @@ class _PlayerVideoState extends State<PlayerVideo>
     if (Constant.resolutionsUrls.isEmpty) return null;
     if (!kIsWeb) return Constant.resolutionsUrls.first;
 
-    const startupOrder = <String>["480p", "320p", "720p", "1080p"];
+    const startupOrder = <String>["320p", "480p", "720p", "1080p"];
     for (final qualityName in startupOrder) {
       for (final quality in Constant.resolutionsUrls) {
         if (quality.qualityName == qualityName) return quality;
@@ -609,76 +666,110 @@ class _PlayerVideoState extends State<PlayerVideo>
       if (widget.playerModel.playType == "Video" ||
           widget.playerModel.playType == "Show") {
         final initialQuality = _initialQualityForStartup();
-        if (initialQuality != null) {
-          _videoPlayerController = VideoPlayerController.networkUrl(
-            Uri.parse(initialQuality.qualityUrl),
-            videoPlayerOptions: VideoPlayerOptions(
-              mixWithOthers: false,
-              allowBackgroundPlayback: false,
-            ),
-          );
+        // The API's videoUrl is the canonical 320p rendition used by the web
+        // cards. Use it for the first frame so a stale global quality list
+        // cannot point a new player at another/expired rendition. Higher
+        // qualities remain available through the quality menu after startup.
+        final startupUrl = kIsWeb
+            ? (widget.playerModel.videoUrl ?? '').trim()
+            : (initialQuality?.qualityUrl ?? '').trim();
+        if (startupUrl.isNotEmpty) {
+          _activeVideoUrl = startupUrl;
+          _videoPlayerController = _networkVideoController(startupUrl);
+        } else if (initialQuality != null) {
+          _activeVideoUrl = initialQuality.qualityUrl;
+          _videoPlayerController = _networkVideoController(_activeVideoUrl!);
         } else {
-          _videoPlayerController = VideoPlayerController.networkUrl(
-            Uri.parse(widget.playerModel.videoUrl ?? ""),
-            videoPlayerOptions: VideoPlayerOptions(
-              mixWithOthers: false,
-              allowBackgroundPlayback: false,
-            ),
+          _activeVideoUrl = widget.playerModel.videoUrl;
+          _videoPlayerController = _networkVideoController(
+            _activeVideoUrl ?? "",
           );
         }
       } else {
-        _videoPlayerController = VideoPlayerController.networkUrl(
-          Uri.parse(widget.playerModel.trailerUrl ?? ""),
-          videoPlayerOptions: VideoPlayerOptions(
-            mixWithOthers: false,
-            allowBackgroundPlayback: false,
-          ),
+        _activeVideoUrl = widget.playerModel.trailerUrl;
+        _videoPlayerController = _networkVideoController(
+          _activeVideoUrl ?? "",
         );
       }
     }
   }
 
+  VideoPlayerController _networkVideoController(String url) {
+    return VideoPlayerController.networkUrl(
+      Uri.parse(url),
+      videoPlayerOptions: VideoPlayerOptions(
+        mixWithOthers: false,
+        allowBackgroundPlayback: false,
+      ),
+    );
+  }
+
+  Future<bool> _initializeControllerWithFallback() async {
+    try {
+      await _videoPlayerController.initialize();
+      return true;
+    } catch (error) {
+      printLog("Player: video initialization failed for $_activeVideoUrl: $error");
+    }
+
+    // The quality list can contain an expired or unavailable rendition while
+    // the canonical 320p URL still works. Retry that source before exposing a
+    // poster-only player to the user.
+    final fallbackUrl = (widget.playerModel.videoUrl ?? '').trim();
+    if (!kIsWeb ||
+        fallbackUrl.isEmpty ||
+        fallbackUrl == (_activeVideoUrl ?? '').trim()) {
+      return false;
+    }
+
+    try {
+      await _videoPlayerController.dispose();
+      _activeVideoUrl = fallbackUrl;
+      _videoPlayerController = _networkVideoController(fallbackUrl);
+      await _videoPlayerController.initialize();
+      printLog("Player: initialized canonical fallback source");
+      return true;
+    } catch (fallbackError) {
+      printLog("Player: fallback video initialization failed: $fallbackError");
+      return false;
+    }
+  }
+
   Future<void> initializePlayer() async {
-    await Future.wait([_videoPlayerController.initialize()]).then((
-      value,
-    ) async {
-      if (mounted) {
-        printLog(
-          "initializePlayer stopTime :===> ${widget.playerModel.stopTime}",
-        );
+    if (!await _initializeControllerWithFallback() || !mounted) return;
 
-        /* Subtitle Loads — fire in background, don't block video start */
-        unawaited(_loadSubtitleInBackground());
+    printLog(
+      "initializePlayer stopTime :===> ${widget.playerModel.stopTime}",
+    );
 
-        if (widget.playerModel.stopTime != null &&
-            (widget.playerModel.stopTime ?? 0) > 0) {
-          await _videoPlayerController.seekTo(
-            Duration(milliseconds: widget.playerModel.stopTime ?? 0),
-          );
-        }
+    /* Subtitle Loads — fire in background, don't block video start */
+    unawaited(_loadSubtitleInBackground());
 
-        // [WEB-2] Browser fullscreen is now controlled by dedicated button only
-        if (_isAdActuallyPlaying) {
-          printLog("IMA: Ad started before video init — keeping video paused.");
-          await _videoPlayerController.pause();
-          _shouldShowContentVideo = false;
-        } else {
-          if (_shouldShowAds()) {
-            // Ads enabled: hold video paused until contentResumeRequested fires.
-            printLog("IMA: Video ready, waiting for pre-roll ad...");
-            await _videoPlayerController.pause();
-            _shouldShowContentVideo = false;
-          } else {
-            // No ads: start content immediately and begin progress reporting.
-            await _resumeContent();
-          }
-        }
-        if (!mounted) return;
-        playerProvider.notifyProvider();
-        _startHideTimer();
-        startDurationTimer();
-      }
-    });
+    if (widget.playerModel.stopTime != null &&
+        (widget.playerModel.stopTime ?? 0) > 0) {
+      await _videoPlayerController.seekTo(
+        Duration(milliseconds: widget.playerModel.stopTime ?? 0),
+      );
+    }
+
+    // [WEB-2] Browser fullscreen is now controlled by dedicated button only
+    if (_isAdActuallyPlaying) {
+      printLog("IMA: Ad started before video init — keeping video paused.");
+      await _videoPlayerController.pause();
+      _shouldShowContentVideo = false;
+    } else if (_shouldShowAds()) {
+      // Ads enabled: hold video paused until contentResumeRequested fires.
+      printLog("IMA: Video ready, waiting for pre-roll ad...");
+      await _videoPlayerController.pause();
+      _shouldShowContentVideo = false;
+    } else {
+      // No ads: start content immediately and begin progress reporting.
+      await _resumeContent();
+    }
+    if (!mounted) return;
+    playerProvider.notifyProvider();
+    _startHideTimer();
+    startDurationTimer();
 
     _videoPlayerController.addListener(
       _onVideoListener,
@@ -730,7 +821,7 @@ class _PlayerVideoState extends State<PlayerVideo>
     if (!isPlay) {
       await _videoPlayerController.pause();
     } else {
-      await _videoPlayerController.play();
+      await _playVideo(userInitiated: true);
     }
     playerProvider.notifyProvider();
     _startHideTimer();
@@ -1323,7 +1414,7 @@ class _PlayerVideoState extends State<PlayerVideo>
     ); // [OPT] re-attach named listener
 
     if (wasPlaying) {
-      await _videoPlayerController.play();
+      await _playVideo(userInitiated: true);
       startDurationTimer();
       _startContentProgressUpdates();
     }
@@ -1409,7 +1500,7 @@ class _PlayerVideoState extends State<PlayerVideo>
                       }
                       _videoPlayerController.value.isPlaying
                           ? _videoPlayerController.pause()
-                          : _videoPlayerController.play();
+                          : _playVideo(userInitiated: true);
                       playerProvider.notifyProvider();
                       return KeyEventResult.handled;
                     }
@@ -1519,7 +1610,7 @@ class _PlayerVideoState extends State<PlayerVideo>
 
                         _videoPlayerController.value.isPlaying
                             ? await _videoPlayerController.pause()
-                            : await _videoPlayerController.play();
+                            : await _playVideo(userInitiated: true);
                         if (!mounted) return;
                         playerProvider.notifyProvider();
                         if (_videoPlayerController.value.isPlaying) {
@@ -2049,11 +2140,11 @@ class _PlayerVideoState extends State<PlayerVideo>
           : () async {
               if (isFinished) {
                 await _videoPlayerController.seekTo(Duration.zero);
-                await _videoPlayerController.play();
+                await _playVideo(userInitiated: true);
               } else {
                 _videoPlayerController.value.isPlaying
                     ? await _videoPlayerController.pause()
-                    : await _videoPlayerController.play();
+                    : await _playVideo(userInitiated: true);
               }
               if (!mounted) return;
               playerProvider.notifyProvider();
@@ -2402,7 +2493,7 @@ class _PlayerVideoState extends State<PlayerVideo>
                   onPressed: () async {
                     _videoPlayerController.value.isPlaying
                         ? await _videoPlayerController.pause()
-                        : await _videoPlayerController.play();
+                        : await _playVideo(userInitiated: true);
                     if (!mounted) return;
                     playerProvider.notifyProvider();
                     // FIX-C3: Stay visible when paused
