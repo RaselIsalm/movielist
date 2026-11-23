@@ -31,6 +31,7 @@ import '../widget/myimage.dart';
 import '../widget/mynetworkimg.dart';
 import '../widget/mytext.dart';
 import '../model/playermodel.dart';
+import '../model/qualitymodel.dart';
 import '../ads/adsterra_ad.dart';
 import '../analytics/first_party_telemetry.dart';
 import 'model/optionitem.dart';
@@ -429,10 +430,15 @@ class _PlayerVideoState extends State<PlayerVideo>
       if (!mounted) return;
       _isControllerReady = true; // [FIX] controller now safely assigned
 
-      // Step 3: Fetch ads config
-      imaAdsFeatureStatus = await Utils.configByStatus(
-        status: Constant.playerIMAAdsStatus,
-      );
+      // Web playback does not use IMA. Avoid a remote config request on the
+      // critical startup path so the player can initialize immediately.
+      if (kIsWeb) {
+        imaAdsFeatureStatus = null;
+      } else {
+        imaAdsFeatureStatus = await Utils.configByStatus(
+          status: Constant.playerIMAAdsStatus,
+        );
+      }
       printLog('_getData imaAdsFeatureStatus =======> $imaAdsFeatureStatus');
       _shouldShowContentVideo = false;
       _isAdActuallyPlaying = false;
@@ -520,10 +526,9 @@ class _PlayerVideoState extends State<PlayerVideo>
     printLog("sSubTitleUrls Length =======> ${Constant.subtitleUrls.length}");
     if (widget.playerModel.playType == "Video" ||
         widget.playerModel.playType == "Show") {
-      if (Constant.resolutionsUrls.isNotEmpty) {
-        playerProvider.setCurrentQuality(
-          Constant.resolutionsUrls[0].qualityName,
-        );
+      final initialQuality = _initialQualityForStartup();
+      if (initialQuality != null) {
+        playerProvider.setCurrentQuality(initialQuality.qualityName);
       }
     } else {
       Constant.resolutionsUrls.clear();
@@ -562,6 +567,21 @@ class _PlayerVideoState extends State<PlayerVideo>
     }
   }
 
+  /// Start web playback with a smaller available rendition so the first frame
+  /// arrives quickly. Native playback keeps its existing default quality.
+  QualityModel? _initialQualityForStartup() {
+    if (Constant.resolutionsUrls.isEmpty) return null;
+    if (!kIsWeb) return Constant.resolutionsUrls.first;
+
+    const startupOrder = <String>["480p", "320p", "720p", "1080p"];
+    for (final qualityName in startupOrder) {
+      for (final quality in Constant.resolutionsUrls) {
+        if (quality.qualityName == qualityName) return quality;
+      }
+    }
+    return Constant.resolutionsUrls.first;
+  }
+
   Future<void> _setVideoURL() async {
     if (!kIsWeb && widget.playerModel.playType == "Download") {
       dynamic tempFile;
@@ -588,9 +608,10 @@ class _PlayerVideoState extends State<PlayerVideo>
     } else {
       if (widget.playerModel.playType == "Video" ||
           widget.playerModel.playType == "Show") {
-        if (Constant.resolutionsUrls.isNotEmpty) {
+        final initialQuality = _initialQualityForStartup();
+        if (initialQuality != null) {
           _videoPlayerController = VideoPlayerController.networkUrl(
-            Uri.parse(Constant.resolutionsUrls[0].qualityUrl),
+            Uri.parse(initialQuality.qualityUrl),
             videoPlayerOptions: VideoPlayerOptions(
               mixWithOthers: false,
               allowBackgroundPlayback: false,

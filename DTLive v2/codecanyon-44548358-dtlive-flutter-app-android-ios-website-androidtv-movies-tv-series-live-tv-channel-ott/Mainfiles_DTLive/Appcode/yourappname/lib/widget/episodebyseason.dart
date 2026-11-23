@@ -15,7 +15,6 @@ import '../pages/mydownloads.dart';
 import '../provider/connectivityprovider.dart';
 import '../provider/videodownloadprovider.dart';
 import '../shimmer/shimmerutils.dart';
-import '../utils/adhelper.dart';
 import '../webservice/apiservices.dart';
 import '../model/contentdetailmodel.dart';
 import '../model/episodebyseasonmodel.dart' as episode;
@@ -1475,24 +1474,16 @@ class _EpisodeBySeasonState extends State<EpisodeBySeason> {
       );
 
       if (!mounted) return;
-      AdHelper.checkAndShowAds(
+      // Open immediately. Click-to-play must not be blocked by an interstitial.
+      dynamic isContinue = await Utils.openPlayer(
         context: context,
-        buttonKey: "",
-        adType: Constant.interstialAdType,
-        alwaysShowAd: false,
-        showOnByClick: true,
-        onAdComplete: () async {
-          dynamic isContinue = await Utils.openPlayer(
-            context: context,
-            playerModel: playerModel,
-          );
-
-          printLog("isContinue ===> $isContinue");
-          if (isContinue != null && isContinue == true) {
-            await getAllEpisode();
-          }
-        },
+        playerModel: playerModel,
       );
+
+      printLog("isContinue ===> $isContinue");
+      if (isContinue != null && isContinue == true) {
+        await getAllEpisode();
+      }
     }
   }
 

@@ -34,7 +34,6 @@ import '../webwidget/web_hover_card.dart';
 import '../widget/myimage.dart';
 import '../widget/mytext.dart';
 import '../widget/myusernetworkimg.dart';
-import '../ads/adsterra_preplay.dart';
 
 class WebMySpace extends StatefulWidget {
   final String? newPage, oldPage;
@@ -192,10 +191,6 @@ class WebMySpaceState extends State<WebMySpace> with RouteAware {
       if (!isPrimiumUser) return;
     }
     /* CHECK SUBSCRIPTION */
-
-    if (kIsWeb && playType != "Trailer") {
-      if (!await showAdsterraPreplayAd(context)) return;
-    }
 
     /* Set-up Quality URLs */
     Utils.setQualityURLs(
