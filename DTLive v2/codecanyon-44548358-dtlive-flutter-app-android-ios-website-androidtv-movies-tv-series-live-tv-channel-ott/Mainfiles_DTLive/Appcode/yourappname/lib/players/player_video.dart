@@ -686,21 +686,23 @@ class _PlayerVideoState extends State<PlayerVideo>
             : (initialQuality?.qualityUrl ?? '').trim();
         if (startupUrl.isNotEmpty) {
           _activeVideoUrl = startupUrl;
+          await _ensureHlsForUrl(startupUrl);
           _videoPlayerController = _networkVideoController(startupUrl);
         } else if (initialQuality != null) {
           _activeVideoUrl = initialQuality.qualityUrl;
+          await _ensureHlsForUrl(_activeVideoUrl!);
           _videoPlayerController = _networkVideoController(_activeVideoUrl!);
         } else {
           _activeVideoUrl = widget.playerModel.videoUrl;
+          await _ensureHlsForUrl(_activeVideoUrl ?? "");
           _videoPlayerController = _networkVideoController(
             _activeVideoUrl ?? "",
           );
         }
       } else {
         _activeVideoUrl = widget.playerModel.trailerUrl;
-        _videoPlayerController = _networkVideoController(
-          _activeVideoUrl ?? "",
-        );
+        await _ensureHlsForUrl(_activeVideoUrl ?? "");
+        _videoPlayerController = _networkVideoController(_activeVideoUrl ?? "");
       }
     }
   }
@@ -713,6 +715,12 @@ class _PlayerVideoState extends State<PlayerVideo>
         allowBackgroundPlayback: false,
       ),
     );
+  }
+
+  Future<void> _ensureHlsForUrl(String url) async {
+    if (kIsWeb && url.toLowerCase().contains('.m3u8')) {
+      await _jsHelper.ensureHlsJsLoaded();
+    }
   }
 
   Future<bool> _initializeControllerWithFallback() async {
@@ -740,6 +748,7 @@ class _PlayerVideoState extends State<PlayerVideo>
     try {
       await _videoPlayerController.dispose();
       _activeVideoUrl = fallbackUrl;
+      await _ensureHlsForUrl(fallbackUrl);
       _videoPlayerController = _networkVideoController(fallbackUrl);
       await _videoPlayerController.initialize().timeout(
         const Duration(seconds: 18),
@@ -1473,6 +1482,7 @@ class _PlayerVideoState extends State<PlayerVideo>
     playerCPosition = (_videoPlayerController.value.position).inMilliseconds;
     final wasPlaying = _videoPlayerController.value.isPlaying;
 
+    await _ensureHlsForUrl(qualityUrl);
     final newController = VideoPlayerController.networkUrl(
       Uri.parse(qualityUrl),
       videoPlayerOptions: VideoPlayerOptions(

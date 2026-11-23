@@ -13,5 +13,7 @@ class JSHelper {
 
   Future<void> callBrowserFullscreen(bool isFullscreen) async {}
 
+  Future<bool> ensureHlsJsLoaded() async => false;
+
   void hideRecaptcha() {}
 }

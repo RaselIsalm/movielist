@@ -11,6 +11,9 @@ external JSPromise<JSString> jsOpenTab(JSString url, JSString target);
 @JS('hideRecaptchaBadge')
 external void _hideRecaptchaBadge();
 
+@JS('window.dtliveEnsureHlsJs')
+external JSPromise<JSBoolean> _ensureHlsJsLoaded();
+
 class JSHelper {
   Future<String> callOpenTab(String url, String target) async {
     try {
@@ -64,6 +67,15 @@ class JSHelper {
       // Fullscreen is unavailable in some embedded/mobile browsers. Keep the
       // player usable instead of surfacing an unhandled JS promise error.
       printLog("Browser fullscreen unavailable: $e");
+    }
+  }
+
+  Future<bool> ensureHlsJsLoaded() async {
+    try {
+      return (await _ensureHlsJsLoaded().toDart).toDart;
+    } catch (e) {
+      printLog("HLS.js unavailable; falling back to native HLS support: $e");
+      return false;
     }
   }
 

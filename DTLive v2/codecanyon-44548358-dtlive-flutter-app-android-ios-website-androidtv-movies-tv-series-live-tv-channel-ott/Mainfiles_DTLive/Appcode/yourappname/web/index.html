@@ -771,6 +771,54 @@
       animation: verFade 400ms ease 2.2s both;
     }
   </style>
+  <!-- video_player_web_hls calls Hls.isSupported() for every source. Keep a
+       synchronous MP4-safe fallback, and fetch Hls.js only for HLS streams. -->
+  <script>
+    (function (window) {
+      if (!window.Hls) {
+        window.Hls = {
+          __dtliveFallback: true,
+          isSupported: function () { return false; }
+        };
+      }
+
+      var hlsPromise;
+      window.dtliveEnsureHlsJs = function () {
+        if (window.Hls && !window.Hls.__dtliveFallback &&
+            typeof window.Hls.isSupported === 'function') {
+          return Promise.resolve(true);
+        }
+        if (hlsPromise) return hlsPromise;
+
+        hlsPromise = new Promise(function (resolve) {
+          var settled = false;
+          var script = document.createElement('script');
+          var timeout = window.setTimeout(function () {
+            if (settled) return;
+            settled = true;
+            resolve(false);
+          }, 8000);
+          script.src = 'https://cdn.jsdelivr.net/npm/hls.js@1.7.4/dist/hls.min.js';
+          script.async = true;
+          script.onload = function () {
+            if (settled) return;
+            settled = true;
+            window.clearTimeout(timeout);
+            resolve(!!(window.Hls && !window.Hls.__dtliveFallback &&
+              typeof window.Hls.isSupported === 'function'));
+          };
+          script.onerror = function () {
+            if (settled) return;
+            settled = true;
+            window.clearTimeout(timeout);
+            resolve(false);
+          };
+          document.head.appendChild(script);
+        });
+        return hlsPromise;
+      };
+    })(window);
+  </script>
   <!-- ═════════════════
       SPLASH END
   ══════════════════ -->
