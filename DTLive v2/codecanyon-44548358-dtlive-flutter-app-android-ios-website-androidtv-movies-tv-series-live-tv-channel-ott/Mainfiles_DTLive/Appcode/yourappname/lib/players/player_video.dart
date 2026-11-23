@@ -32,6 +32,7 @@ import '../widget/mynetworkimg.dart';
 import '../widget/mytext.dart';
 import '../model/playermodel.dart';
 import '../ads/adsterra_ad.dart';
+import '../analytics/first_party_telemetry.dart';
 import 'model/optionitem.dart';
 import 'model/subtitlemodel.dart';
 import 'model/subtitlemodel.dart' as mysubtitle;
@@ -80,6 +81,8 @@ class _PlayerVideoState extends State<PlayerVideo>
 
   int _lastListenerPositionMs = -1;
   bool _isQualitySwitching = false;
+  bool _telemetryStartSent = false;
+  bool _telemetryCompleteSent = false;
 
   // Controls show/hide animation
   late AnimationController _controlsAnimController;
@@ -255,6 +258,15 @@ class _PlayerVideoState extends State<PlayerVideo>
       // Restart progress updates so future mid-roll cue points advance.
       _startContentProgressUpdates();
       if (!kIsWeb) _updateVideoState(isPlaying: true);
+      if (!_telemetryStartSent) {
+        _telemetryStartSent = true;
+        FirstPartyTelemetry.instance.track(
+          'video_start',
+          placement: 'player',
+          contentId: widget.playerModel.videoId.toString(),
+          viewport: kIsWeb ? 'web' : 'native',
+        );
+      }
     }
   }
   /* IMA Ads END */
@@ -677,6 +689,15 @@ class _PlayerVideoState extends State<PlayerVideo>
     final durMs = _videoPlayerController.value.duration.inMilliseconds;
     playerCPosition = posMs;
     videoTotalDuration = durMs;
+    if (!_telemetryCompleteSent && durMs > 0 && posMs >= durMs - 500) {
+      _telemetryCompleteSent = true;
+      FirstPartyTelemetry.instance.track(
+        'video_complete',
+        placement: 'player',
+        contentId: widget.playerModel.videoId.toString(),
+        viewport: kIsWeb ? 'web' : 'native',
+      );
+    }
     // Throttle: run expensive checks only every 500ms of playback change
     if ((posMs - _lastListenerPositionMs).abs() < 500) return;
     _lastListenerPositionMs = posMs;
@@ -791,6 +812,7 @@ class _PlayerVideoState extends State<PlayerVideo>
       _videoPlayerController.removeListener(_onVideoListener);
       _videoPlayerController.dispose();
     }
+    unawaited(FirstPartyTelemetry.instance.flush());
     routeObserver.unsubscribe(this);
     super.dispose();
   }

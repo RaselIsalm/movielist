@@ -12,6 +12,7 @@ class SectionDataProvider extends ChangeNotifier {
   SuccessModel successModel = SuccessModel();
 
   bool loadingBanner = false, loadingSection = false;
+  bool hasLoadError = false;
   bool isBannerHovered = false;
   int? cBannerIndex = 0, lastTabPosition;
 
@@ -42,6 +43,7 @@ class SectionDataProvider extends ChangeNotifier {
       printLog("getSectionBanner message :==> ${sectionBannerModel.message}");
     } on Exception catch (e) {
       printLog("getSectionBanner Exception :==> $e");
+      hasLoadError = true;
     } finally {
       loadingBanner = false;
       notifyListeners();
@@ -63,6 +65,7 @@ class SectionDataProvider extends ChangeNotifier {
   void setLoading(bool flagLoading) {
     loadingBanner = flagLoading;
     loadingSection = flagLoading;
+    if (flagLoading) hasLoadError = false;
     notifyListeners();
   }
 
@@ -96,6 +99,7 @@ class SectionDataProvider extends ChangeNotifier {
           await ApiService().sectionList(typeId, isHomePage, pageNo);
     } on Exception catch (e) {
       printLog("getSectionList Exception :==> $e");
+      hasLoadError = true;
       sectionListModel = previousModel;
       if (previousSections.isNotEmpty) {
         sectionList = previousSections;

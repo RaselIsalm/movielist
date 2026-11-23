@@ -215,10 +215,18 @@ class WebSearchState extends State<WebSearch> {
             spacing: Dimens.isBigScreen(context) ? 12 : 8,
             runSpacing: Dimens.isBigScreen(context) ? 16 : 10,
             alignment: WrapAlignment.start,
-            children: List.generate(
-              (findProvider.searchDataList?.length ?? 0),
-              (position) => _buildVideoContent(position: position),
-            ),
+            children: [
+              for (var position = 0;
+                  position < (findProvider.searchDataList?.length ?? 0);
+                  position++) ...[
+                _buildVideoContent(position: position),
+                if (position == 5)
+                  const AdsterraAd(
+                    unit: AdsterraUnit.banner320x50,
+                    margin: EdgeInsets.symmetric(vertical: 8),
+                  ),
+              ],
+            ],
           ),
 
           /* Pagination loader */

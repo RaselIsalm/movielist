@@ -365,6 +365,27 @@ class WebHomeState extends State<WebHome> {
             (sectionDataProvider.sectionList?.length ?? 0) == 0 &&
             !sectionDataProvider.loadingBanner &&
             !sectionDataProvider.loadingSection) {
+          if (sectionDataProvider.hasLoadError) {
+            return Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const NoData(
+                    title: 'Unable to load content',
+                    subTitle: 'Check your connection and try again.',
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton(
+                    onPressed: () => getTabData(
+                      -1,
+                      homeProvider.sectionTypeModel.result,
+                    ),
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
+            );
+          }
           return const Center(
             child: NoData(title: 'no_data', subTitle: 'no_video_show'),
           );

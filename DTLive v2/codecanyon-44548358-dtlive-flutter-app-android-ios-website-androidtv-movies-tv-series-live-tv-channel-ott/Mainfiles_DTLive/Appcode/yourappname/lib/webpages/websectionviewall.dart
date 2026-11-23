@@ -267,50 +267,58 @@ class WebSectionViewAllState extends State<WebSectionViewAll> {
         ? Dimens.heightPortOtherWeb
         : Dimens.heightPortOther;
 
+    final cards = <Widget>[];
+    final count = sectionViewAllProvider.sectionDetailList?.length ?? 0;
+    for (var position = 0; position < count; position++) {
+      cards.add(
+        WebHoverCard(
+          cardW: cardW,
+          cardH: cardH,
+          borderRadius: Dimens.cardRadiusMedium,
+          imageUrl:
+              sectionViewAllProvider.sectionDetailList?[position].thumbnail
+                  .toString() ??
+              "",
+          onTap: () {
+            printLog("Clicked on position ==> $position");
+            Utils.openDetails(
+              context: context,
+              videoId:
+                  sectionViewAllProvider.sectionDetailList?[position].id ?? 0,
+              subVideoType:
+                  sectionViewAllProvider.sectionDetailList?[position]
+                          .subVideoType ??
+                      0,
+              videoType: sectionViewAllProvider.sectionDetailList?[position]
+                      .videoType ??
+                  0,
+              typeId: sectionViewAllProvider.sectionDetailList?[position]
+                      .typeId ??
+                  0,
+              newPage: RoutesConstant.contentDetailsPage,
+              oldPage: widget.newPage ?? "",
+              reqText: "",
+            );
+          },
+        ),
+      );
+      if (position == 5) {
+        cards.add(
+          const AdsterraAd(
+            unit: AdsterraUnit.banner320x50,
+            margin: EdgeInsets.symmetric(vertical: 8),
+          ),
+        );
+      }
+    }
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
       child: Wrap(
         spacing: bigScreen ? 12 : 8,
         runSpacing: bigScreen ? 16 : 10,
         alignment: WrapAlignment.start,
-        children: List.generate(
-          sectionViewAllProvider.sectionDetailList?.length ?? 0,
-          (position) => WebHoverCard(
-            cardW: cardW,
-            cardH: cardH,
-            borderRadius: Dimens.cardRadiusMedium,
-            imageUrl:
-                sectionViewAllProvider.sectionDetailList?[position].thumbnail
-                    .toString() ??
-                "",
-            onTap: () {
-              printLog("Clicked on position ==> $position");
-              Utils.openDetails(
-                context: context,
-                videoId:
-                    sectionViewAllProvider.sectionDetailList?[position].id ?? 0,
-                subVideoType:
-                    sectionViewAllProvider
-                        .sectionDetailList?[position]
-                        .subVideoType ??
-                    0,
-                videoType:
-                    sectionViewAllProvider
-                        .sectionDetailList?[position]
-                        .videoType ??
-                    0,
-                typeId:
-                    sectionViewAllProvider
-                        .sectionDetailList?[position]
-                        .typeId ??
-                    0,
-                newPage: RoutesConstant.contentDetailsPage,
-                oldPage: widget.newPage ?? "",
-                reqText: "",
-              );
-            },
-          ),
-        ),
+        children: cards,
       ),
     );
   }

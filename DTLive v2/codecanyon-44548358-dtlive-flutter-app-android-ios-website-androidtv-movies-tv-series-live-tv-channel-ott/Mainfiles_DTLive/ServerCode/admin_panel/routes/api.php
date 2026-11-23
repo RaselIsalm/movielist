@@ -13,6 +13,7 @@
 
 use App\Http\Controllers\Api\HomeController;
 use App\Http\Controllers\Api\SeoController;
+use App\Http\Controllers\Api\TelemetryController;
 use App\Http\Controllers\Api\UserController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -24,6 +25,13 @@ Route::get('seo', [SeoController::class, 'metadata'])->name('api.seo.metadata');
 Route::get('sitemap.xml', [SeoController::class, 'sitemap'])
     ->withoutMiddleware('throttle:api')
     ->name('api.seo.sitemap');
+
+// Anonymous, privacy-safe product telemetry. It intentionally lives outside
+// the purchase-token group so a public web visitor can report placement and
+// playback events without receiving catalog or account data.
+Route::post('telemetry/events', [TelemetryController::class, 'store'])
+    ->middleware('throttle:api')
+    ->name('api.telemetry.events');
 
 // Serve catalog files through the API middleware stack so Flutter Web receives
 // same-origin responses. Cloud disks are streamed with HTTP Range support;

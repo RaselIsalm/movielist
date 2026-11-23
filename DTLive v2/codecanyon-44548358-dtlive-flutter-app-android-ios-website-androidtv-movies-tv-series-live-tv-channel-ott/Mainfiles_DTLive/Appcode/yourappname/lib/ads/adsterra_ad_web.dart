@@ -26,6 +26,7 @@ class AdsterraAd extends StatefulWidget {
 class _AdsterraAdState extends State<AdsterraAd> {
   static int _nextViewId = 0;
   late final String _viewType;
+  bool _collapsed = false;
 
   @override
   void initState() {
@@ -71,6 +72,7 @@ atOptions = {
           ..type = 'text/javascript'
           ..src =
               'https://bancadeltempoidea.org/22/5d4443051d962c9f88a7ace3df6696cc';
+        script.onError.listen((_) => _collapseSlot(root));
         root.append(options);
         root.append(script);
       case AdsterraUnit.banner320x50:
@@ -89,6 +91,7 @@ atOptions = {
           ..type = 'text/javascript'
           ..src =
               'https://bancadeltempoidea.org/22/6b272a10e55170223cad5f413212edbd';
+        script.onError.listen((_) => _collapseSlot(root));
         root.append(options);
         root.append(script);
       case AdsterraUnit.nativeBanner:
@@ -97,11 +100,18 @@ atOptions = {
           ..setAttribute('data-cfasync', 'false')
           ..src =
               'https://bancadeltempoidea.org/21/f41c27f0f037b0f4fd483e03a969b04a';
+        script.onError.listen((_) => _collapseSlot(root));
         final container = html.DivElement()
           ..id = 'container-f41c27f0f037b0f4fd483e03a969b04a';
         root.append(script);
         root.append(container);
     }
+  }
+
+  void _collapseSlot(html.DivElement root) {
+    root.style.height = '0';
+    root.style.display = 'none';
+    if (mounted) setState(() => _collapsed = true);
   }
 
   @override
@@ -112,6 +122,7 @@ atOptions = {
       AdsterraUnit.nativeBanner => const Size(double.infinity, 280),
     };
 
+    if (_collapsed) return const SizedBox.shrink();
     return Padding(
       padding: widget.margin,
       child: Center(

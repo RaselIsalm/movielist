@@ -24,6 +24,7 @@ import '../utils/constant.dart';
 import '../utils/dimens.dart';
 import '../utils/sharedpre.dart';
 import '../utils/utils.dart';
+import '../analytics/first_party_telemetry.dart';
 import '../web_js/js_helper.dart';
 import '../webwidget/interactive_icon.dart';
 import '../webwidget/webarrowkeyscroll.dart';
@@ -513,6 +514,11 @@ class _WebCommanState extends State<WebComman> with RouteAware {
     super.initState();
     currentPage = widget.newPage;
     reqText = widget.reqText;
+    FirstPartyTelemetry.instance.track(
+      'page_view',
+      placement: widget.newPage ?? 'unknown',
+      viewport: kIsWeb ? 'web' : 'native',
+    );
     generalProvider = Provider.of<GeneralProvider>(context, listen: false);
     sectionDataProvider = Provider.of<SectionDataProvider>(
       context,
