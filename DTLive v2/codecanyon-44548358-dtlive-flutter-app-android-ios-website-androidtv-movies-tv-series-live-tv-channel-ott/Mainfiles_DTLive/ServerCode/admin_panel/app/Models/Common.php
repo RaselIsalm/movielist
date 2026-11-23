@@ -14,6 +14,7 @@ use Throwable;
 class Common extends Model
 {
     public $folder_content = "content";
+    private ?array $publicStorageUrls = null;
 
     /**
      * Generate missing local quality variants after a server video upload.
@@ -370,9 +371,18 @@ class Common extends Model
             return rtrim((string) $envUrl, '/');
         }
 
-        $storage = Storage_Setting();
-        $key = $diskName === 's3' ? 's3_public_url' : 'wasabi_public_url';
-        return rtrim((string) ($storage[$key] ?? ''), '/');
+        // A feed response resolves this URL for every card. Keep the setting
+        // in memory for the lifetime of the request instead of querying the
+        // storage settings table once per image and video.
+        if ($this->publicStorageUrls === null) {
+            $storage = Storage_Setting();
+            $this->publicStorageUrls = [
+                's3' => rtrim((string) ($storage['s3_public_url'] ?? ''), '/'),
+                'wasabi' => rtrim((string) ($storage['wasabi_public_url'] ?? ''), '/'),
+            ];
+        }
+
+        return $this->publicStorageUrls[$diskName] ?? '';
     }
 
     private function isRemoteUrl(string $value): bool
