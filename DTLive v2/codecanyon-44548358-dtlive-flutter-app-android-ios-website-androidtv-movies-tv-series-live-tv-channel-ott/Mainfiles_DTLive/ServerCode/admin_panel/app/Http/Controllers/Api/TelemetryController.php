@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use Illuminate\Support\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -37,6 +38,13 @@ class TelemetryController extends Controller
         $now = now();
         $rows = [];
         foreach ($payload['events'] as $event) {
+            // The browser sends ISO-8601 timestamps (for example, with a
+            // trailing Z). Normalize them before inserting into MySQL's
+            // timestamp column instead of relying on implicit conversion.
+            $occurredAt = $now;
+            if (!empty($event['occurred_at'])) {
+                $occurredAt = Carbon::parse($event['occurred_at']);
+            }
             $rows[] = [
                 'event_name' => $event['event'],
                 'session_hash' => hash('sha256', $event['session_id']),
@@ -47,7 +55,7 @@ class TelemetryController extends Controller
                 'consent_given' => array_key_exists('consent', $event)
                     ? (bool) $event['consent']
                     : null,
-                'occurred_at' => $event['occurred_at'] ?? $now,
+                'occurred_at' => $occurredAt->toDateTimeString(),
                 'created_at' => $now,
                 'updated_at' => $now,
             ];
