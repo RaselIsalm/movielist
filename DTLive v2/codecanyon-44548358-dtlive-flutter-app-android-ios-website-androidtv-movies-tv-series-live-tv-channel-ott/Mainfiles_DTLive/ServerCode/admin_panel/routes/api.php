@@ -74,38 +74,116 @@ Route::get('media/{folder}/{filename}', function (Request $request, string $fold
         ]);
     }
 
-    // The three filesystem calls previously used here (`exists`, `size`, and
-    // `lastModified`) each perform a separate remote HEAD against R2. That
-    // added several seconds before every video could even start buffering.
-    // Read the object metadata once and reuse the same S3 client for the
-    // requested byte range below.
+    // Reuse the S3 client for cloud media. A browser's initial video request
+    // already contains a byte range, so fetch that range directly and derive
+    // the total size from S3's Content-Range response. This avoids a separate
+    // remote HEAD before every playback start.
     $adapter = $disk->getAdapter();
     $client = method_exists($adapter, 'getClient') ? $adapter->getClient() : null;
     $bucket = $disk->getConfig()['bucket'] ?? null;
-    $head = null;
-    if ($client !== null && $bucket !== null && $bucket !== '') {
+    $body = null;
+    $stream = null;
+    $directObject = null;
+    $contentType = null;
+    $range = $request->header('Range');
+    $rangeMatches = null;
+    $hasValidRange = $range !== null && preg_match(
+        '/^bytes=(\d*)-(\d*)$/i',
+        trim($range),
+        $rangeMatches,
+    );
+
+    // Conditional requests still use HEAD so an already cached browser can
+    // receive a cheap 304 without downloading another object body.
+    if ($client !== null && $bucket !== null && $bucket !== '' &&
+        !$request->isMethod('HEAD') && $request->header('If-None-Match') === null) {
         try {
-            $head = $client->headObject([
+            $objectOptions = [
                 'Bucket' => $bucket,
                 'Key' => $path,
-            ]);
+            ];
+            if ($hasValidRange && !($rangeMatches[1] === '' && $rangeMatches[2] === '')) {
+                $objectOptions['Range'] = trim($range);
+            }
+            $directObject = $client->getObject($objectOptions);
         } catch (\Throwable $exception) {
             abort(404);
         }
     }
 
-    if ($head !== null) {
-        $size = (int) ($head['ContentLength'] ?? 0);
-        $lastModifiedValue = $head['LastModified'] ?? null;
+    if ($directObject !== null) {
+        $contentType = $directObject['ContentType'] ?? null;
+        $contentRange = (string) ($directObject['ContentRange'] ?? '');
+        if (preg_match('/^bytes\s+(\d+)-(\d+)\/(\d+)$/i', $contentRange, $contentRangeMatches)) {
+            $start = (int) $contentRangeMatches[1];
+            $end = (int) $contentRangeMatches[2];
+            $size = (int) $contentRangeMatches[3];
+        } else {
+            $start = 0;
+            $size = (int) ($directObject['ContentLength'] ?? 0);
+            $end = $size - 1;
+        }
+        $body = $directObject['Body'] ?? null;
+        $length = (int) ($directObject['ContentLength'] ?? ($end - $start + 1));
+        $lastModifiedValue = $directObject['LastModified'] ?? null;
         $lastModified = is_object($lastModifiedValue) && method_exists($lastModifiedValue, 'getTimestamp')
             ? (int) $lastModifiedValue->getTimestamp()
             : (int) ($lastModifiedValue ?? 0);
+        abort_unless($size > 0 && $body !== null, 404);
     } else {
-        abort_unless($disk->exists($path), 404);
-        $size = (int) $disk->size($path);
-        $lastModified = (int) $disk->lastModified($path);
+        $head = null;
+        if ($client !== null && $bucket !== null && $bucket !== '') {
+            try {
+                $head = $client->headObject([
+                    'Bucket' => $bucket,
+                    'Key' => $path,
+                ]);
+            } catch (\Throwable $exception) {
+                abort(404);
+            }
+        }
+        if ($head !== null) {
+            $size = (int) ($head['ContentLength'] ?? 0);
+            $lastModifiedValue = $head['LastModified'] ?? null;
+            $lastModified = is_object($lastModifiedValue) && method_exists($lastModifiedValue, 'getTimestamp')
+                ? (int) $lastModifiedValue->getTimestamp()
+                : (int) ($lastModifiedValue ?? 0);
+        } else {
+            abort_unless($disk->exists($path), 404);
+            $size = (int) $disk->size($path);
+            $lastModified = (int) $disk->lastModified($path);
+        }
+        abort_unless($size > 0, 404);
+        $start = 0;
+        $end = $size - 1;
+        if ($hasValidRange) {
+            if ($rangeMatches[1] === '' && $rangeMatches[2] === '') {
+                return response('', 416, ['Content-Range' => 'bytes */' . $size]);
+            }
+            if ($rangeMatches[1] === '') {
+                $suffixLength = min($size, (int) $rangeMatches[2]);
+                $start = $size - $suffixLength;
+            } else {
+                $start = (int) $rangeMatches[1];
+                $end = $rangeMatches[2] === '' ? $end : (int) $rangeMatches[2];
+            }
+            if ($start < 0 || $start >= $size || $end < $start) {
+                return response('', 416, ['Content-Range' => 'bytes */' . $size]);
+            }
+            $end = min($end, $size - 1);
+        }
+        $length = $end - $start + 1;
     }
-    abort_unless($size > 0, 404);
+
+    $contentType ??= match (strtolower(pathinfo($filename, PATHINFO_EXTENSION))) {
+        'mp4', 'm4v' => 'video/mp4',
+        'webm' => 'video/webm',
+        'jpg', 'jpeg' => 'image/jpeg',
+        'png' => 'image/png',
+        'webp' => 'image/webp',
+        default => 'application/octet-stream',
+    };
+
     $etag = '"' . md5($diskName . ':' . $path . ':' . $size . ':' . $lastModified) . '"';
     $cacheHeaders = [
         'Cache-Control' => 'public, max-age=31536000, immutable',
@@ -117,41 +195,9 @@ Route::get('media/{folder}/{filename}', function (Request $request, string $fold
         return response('', 304, $cacheHeaders);
     }
 
-    $start = 0;
-    $end = $size - 1;
-    $range = $request->header('Range');
-    if ($range !== null && preg_match('/bytes=(\d*)-(\d*)/i', $range, $matches)) {
-        if ($matches[1] === '' && $matches[2] === '') {
-            return response('', 416, ['Content-Range' => 'bytes */' . $size]);
-        }
-        if ($matches[1] === '') {
-            $suffixLength = min($size, (int) $matches[2]);
-            $start = $size - $suffixLength;
-        } else {
-            $start = (int) $matches[1];
-            $end = $matches[2] === '' ? $end : (int) $matches[2];
-        }
-        if ($start < 0 || $start >= $size || $end < $start) {
-            return response('', 416, ['Content-Range' => 'bytes */' . $size]);
-        }
-        $end = min($end, $size - 1);
-    }
-
-    $length = $end - $start + 1;
-    $contentType = match (strtolower(pathinfo($filename, PATHINFO_EXTENSION))) {
-        'mp4', 'm4v' => 'video/mp4',
-        'webm' => 'video/webm',
-        'jpg', 'jpeg' => 'image/jpeg',
-        'png' => 'image/png',
-        'webp' => 'image/webp',
-        default => 'application/octet-stream',
-    };
-
     // Ask the S3-compatible client for exactly the requested range. This
     // avoids downloading a whole movie when a browser seeks near the end.
-    $body = null;
-    $stream = null;
-    if ($client !== null && $bucket !== null && $bucket !== '') {
+    if ($body === null && $client !== null && $bucket !== null && $bucket !== '') {
         $options = [
             'Bucket' => $bucket,
             'Key' => $path,
