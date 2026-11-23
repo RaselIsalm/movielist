@@ -23,7 +23,6 @@ class MyNetworkImage extends StatefulWidget {
 }
 
 class _MyNetworkImageState extends State<MyNetworkImage> {
-  bool _isPrecached = false;
 
   Widget _skeleton() {
     return Container(
@@ -40,27 +39,6 @@ class _MyNetworkImageState extends State<MyNetworkImage> {
         ),
       ),
     );
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (kIsWeb && !_isPrecached) {
-      _precacheImage();
-      _isPrecached = true;
-    }
-  }
-
-  Future<void> _precacheImage() async {
-    if (widget.imageUrl.trim().isEmpty || widget.imageUrl.contains('no_img')) {
-      return;
-    }
-    final image = NetworkImage(widget.imageUrl);
-    try {
-      await precacheImage(image, context);
-    } catch (_) {
-      // The image widget's errorBuilder remains the fallback.
-    }
   }
 
   @override

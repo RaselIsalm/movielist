@@ -52,16 +52,42 @@ Route::get('media/{folder}/{filename}', function (Request $request, string $fold
     if ($diskName === 'public') {
         $localPath = $disk->path($path);
         abort_unless(is_file($localPath), 404);
-        return response()->file($localPath, [
+        $etag = '"' . md5($path . ':' . filesize($localPath) . ':' . filemtime($localPath)) . '"';
+        $cacheHeaders = [
             'Cache-Control' => 'public, max-age=31536000, immutable',
+            'ETag' => $etag,
             'Access-Control-Allow-Origin' => '*',
             'Access-Control-Expose-Headers' => 'Content-Length, Content-Range, Accept-Ranges, ETag',
+        ];
+        if ($request->header('If-None-Match') === $etag) {
+            return response('', 304, $cacheHeaders);
+        }
+        $headers = [
+            ...$cacheHeaders,
+            'Accept-Ranges' => 'bytes',
+        ];
+        if ($request->isMethod('HEAD')) {
+            return response('', 200, $headers);
+        }
+        return response()->file($localPath, [
+            ...$headers,
         ]);
     }
 
     abort_unless($disk->exists($path), 404);
     $size = (int) $disk->size($path);
     abort_unless($size > 0, 404);
+    $lastModified = (int) $disk->lastModified($path);
+    $etag = '"' . md5($diskName . ':' . $path . ':' . $size . ':' . $lastModified) . '"';
+    $cacheHeaders = [
+        'Cache-Control' => 'public, max-age=31536000, immutable',
+        'ETag' => $etag,
+        'Access-Control-Allow-Origin' => '*',
+        'Access-Control-Expose-Headers' => 'Content-Length, Content-Range, Accept-Ranges, ETag',
+    ];
+    if ($request->header('If-None-Match') === $etag) {
+        return response('', 304, $cacheHeaders);
+    }
 
     $start = 0;
     $end = $size - 1;
@@ -123,15 +149,17 @@ Route::get('media/{folder}/{filename}', function (Request $request, string $fold
         'Content-Type' => $contentType,
         'Content-Length' => (string) $length,
         'Accept-Ranges' => 'bytes',
-        'Cache-Control' => 'public, max-age=31536000, immutable',
+        ...$cacheHeaders,
         'Content-Disposition' => 'inline; filename="' . addslashes($filename) . '"',
-        'Access-Control-Allow-Origin' => '*',
-        'Access-Control-Expose-Headers' => 'Content-Length, Content-Range, Accept-Ranges, ETag',
         'X-Content-Type-Options' => 'nosniff',
     ];
     $status = ($start !== 0 || $end !== $size - 1) ? 206 : 200;
     if ($status === 206) {
         $headers['Content-Range'] = 'bytes ' . $start . '-' . $end . '/' . $size;
+    }
+
+    if ($request->isMethod('HEAD')) {
+        return response('', $status, $headers);
     }
 
     return response()->stream(function () use ($body, $stream, $length) {

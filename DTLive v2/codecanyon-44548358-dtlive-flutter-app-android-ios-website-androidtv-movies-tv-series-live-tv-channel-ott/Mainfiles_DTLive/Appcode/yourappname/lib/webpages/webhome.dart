@@ -11,6 +11,7 @@ import 'package:percent_indicator/linear_percent_indicator.dart';
 import 'package:provider/provider.dart';
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 import 'package:carousel_slider/carousel_slider.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 
 import '../model/playermodel.dart';
 import '../players/model/vdociphermodel.dart';
@@ -41,6 +42,7 @@ import '../widget/content_section_widget.dart';
 import '../widget/genre_language_section_widget.dart';
 import '../widget/shorts_section_widget.dart';
 import '../ads/adsterra_ad.dart';
+import '../analytics/first_party_telemetry.dart';
 
 class WebHome extends StatefulWidget {
   final String? newPage, oldPage;
@@ -65,6 +67,7 @@ class WebHomeState extends State<WebHome> {
   CarouselSliderController carouselController = CarouselSliderController();
 
   bool isSearchEnable = false;
+  bool _firstContentReported = false;
   String? currentPage,
       langCatName,
       mSearchText,
@@ -92,41 +95,41 @@ class WebHomeState extends State<WebHome> {
       listen: false,
     );
 
-    subscriptionStatus = await Utils.configByStatus(
-      status: Constant.subscriptionStatus,
-    );
-    continueWatchingStatus = await Utils.configByStatus(
-      status: Constant.continueWatchingStatus,
-    );
-    printLog('_getData subscriptionStatus =======> $subscriptionStatus');
-    printLog('_getData continueWatchingStatus ===> $continueWatchingStatus');
+    final statusFuture = Future.wait([
+      Utils.configByStatus(status: Constant.subscriptionStatus),
+      Utils.configByStatus(status: Constant.continueWatchingStatus),
+    ]);
 
     Constant.userID = await sharedPref.read("userid");
     Constant.userIsKid = await sharedPref.readBool(Constant.profileUserKey);
     printLog('Constant userID =====> ${Constant.userID}');
     printLog('Constant userIsKid ==> ${Constant.userIsKid}');
 
+    // Restore the last successful shell before touching the network. The
+    // refresh below keeps the snapshot current without flashing a blank home.
+    await Future.wait([
+      homeProvider.restoreCachedSectionTypes(),
+      sectionDataProvider.restoreCachedHome(),
+    ]);
+    if (!mounted) return;
+
+    final statuses = await statusFuture;
+    subscriptionStatus = statuses[0];
+    continueWatchingStatus = statuses[1];
+    printLog('_getData subscriptionStatus =======> $subscriptionStatus');
+    printLog('_getData continueWatchingStatus ===> $continueWatchingStatus');
+
     unawaited(generalProvider.getGeneralsetting(context));
-    await homeProvider.setLoading(true);
-    await homeProvider.getSectionType();
+    unawaited(homeProvider.getSectionType());
+
+    if (widget.newPage == RoutesConstant.homePage) {
+      unawaited(getTabData(-1, null));
+    }
 
     printLog("<===============================>");
     printLog('_getData oldPage ==> ${widget.oldPage}');
     printLog('_getData newPage ==> ${widget.newPage}');
     printLog("<===============================>");
-    if (!homeProvider.loading && widget.newPage == RoutesConstant.homePage) {
-      if (homeProvider.sectionTypeModel.status == 200 &&
-          homeProvider.sectionTypeModel.result != null) {
-        if ((homeProvider.sectionTypeModel.result?.length ?? 0) > 0) {
-          if ((sectionDataProvider.sectionBannerModel.result?.length ?? 0) ==
-                  0 ||
-              (sectionDataProvider.sectionList?.length ?? 0) == 0) {
-            getTabData(-1, homeProvider.sectionTypeModel.result);
-          }
-        }
-      }
-    }
-
     Future.delayed(Duration.zero).then((value) {
       if (!context.mounted) return;
       setState(() {});
@@ -167,7 +170,7 @@ class WebHomeState extends State<WebHome> {
 
     await Future.wait([
       sectionDataProvider.getSectionBanner(tabId, type),
-      sectionDataProvider.getSectionList(tabId, type, 1),
+      sectionDataProvider.getFeedSections(tabId, type, refresh: true),
     ]);
   }
 
@@ -333,16 +336,27 @@ class WebHomeState extends State<WebHome> {
   }
 
   Widget _buildPageUI() {
-    if (homeProvider.loading) {
+    final hasCachedHome =
+        (sectionDataProvider.sectionList?.isNotEmpty ?? false) ||
+        (sectionDataProvider.sectionBannerModel.result?.isNotEmpty ?? false);
+    if (!_firstContentReported && hasCachedHome) {
+      _firstContentReported = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        FirstPartyTelemetry.instance.track(
+          'first_content',
+          placement: 'home',
+          viewport: 'web',
+        );
+      });
+    }
+    final isLoading = homeProvider.loading ||
+        sectionDataProvider.loadingBanner ||
+        sectionDataProvider.loadingSection;
+    if (isLoading && !hasCachedHome) {
       return ShimmerUtils.buildHomeMobileShimmer(context);
     } else {
-      if (homeProvider.sectionTypeModel.status == 200) {
-        if (homeProvider.sectionTypeModel.result != null ||
-            (homeProvider.sectionTypeModel.result?.length ?? 0) > 0) {
-          return _buildTypeTabData(homeProvider.sectionTypeModel.result);
-        } else {
-          return const SizedBox.shrink();
-        }
+      if (homeProvider.sectionTypeModel.status == 200 || hasCachedHome) {
+        return _buildTypeTabData(homeProvider.sectionTypeModel.result);
       } else {
         return const Center(
           child: NoData(title: 'no_data', subTitle: 'no_video_show'),
@@ -1422,7 +1436,19 @@ class WebHomeState extends State<WebHome> {
       padding: const EdgeInsets.fromLTRB(0, 15, 0, 0),
       physics: const NeverScrollableScrollPhysics(),
       itemBuilder: (BuildContext context, int index) {
-        if (sectionList?[index].data != null &&
+        final item = sectionList![index];
+        return VisibilityDetector(
+          key: ValueKey('web-feed-section-${item.id ?? index}'),
+          onVisibilityChanged: (info) {
+            if (info.visibleFraction > 0 &&
+                !sectionDataProvider.hasLoadedFeedSection(item.id ?? 0) &&
+                !sectionDataProvider.isLoadingFeedSection(item.id ?? 0)) {
+              unawaited(sectionDataProvider.getFeedSectionItems(item));
+            }
+          },
+          child: Builder(
+            builder: (context) {
+        if (item.data != null &&
             (sectionList?[index].data?.length ?? 0) > 0) {
           if (sectionList?[index].videoType == Constant.continueWatchType &&
               continueWatchingStatus != null &&
@@ -1532,12 +1558,26 @@ class WebHomeState extends State<WebHome> {
               child: NoData(title: 'no_data', subTitle: 'no_video_show'),
             );
           } else {
+            if (sectionDataProvider.isLoadingFeedSection(item.id ?? 0) ||
+                sectionDataProvider.loadingSection) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 25),
+                child: ShimmerUtils.setHomeSections(
+                  context,
+                  item.screenLayout ?? 'landscape',
+                ),
+              );
+            }
             return const SizedBox.shrink();
           }
         }
+            },
+          ),
+        );
       },
     );
   }
+
 
   Widget _buildTitleViewAll({
     required List<list.Result>? sectionList,

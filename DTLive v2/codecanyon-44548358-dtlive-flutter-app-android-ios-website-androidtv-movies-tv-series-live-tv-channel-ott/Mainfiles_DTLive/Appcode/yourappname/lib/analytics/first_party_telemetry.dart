@@ -15,6 +15,9 @@ class FirstPartyTelemetry {
   static final FirstPartyTelemetry instance = FirstPartyTelemetry._();
   static const _allowedEvents = <String>{
     'page_view',
+    'web_boot',
+    'first_content',
+    'player_ready',
     'video_start',
     'video_complete',
     'ad_impression',

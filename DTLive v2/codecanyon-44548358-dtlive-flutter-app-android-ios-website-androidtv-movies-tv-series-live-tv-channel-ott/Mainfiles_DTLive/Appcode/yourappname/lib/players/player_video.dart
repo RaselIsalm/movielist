@@ -741,6 +741,12 @@ class _PlayerVideoState extends State<PlayerVideo>
     printLog(
       "initializePlayer stopTime :===> ${widget.playerModel.stopTime}",
     );
+    FirstPartyTelemetry.instance.track(
+      'player_ready',
+      placement: 'player',
+      contentId: widget.playerModel.videoId.toString(),
+      viewport: kIsWeb ? 'web' : 'native',
+    );
 
     /* Subtitle Loads — fire in background, don't block video start */
     unawaited(_loadSubtitleInBackground());

@@ -37,21 +37,8 @@
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
   <link rel="icon" type="image/png" href="favicon.png" />
-
-
-  <!-- External JS libraries -->
-  <!-- iOS Apple login -->
-  <script type="text/javascript"
-    src="https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js"></script>
-
-  <!-- Google login -->
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
-
-  <!-- Stripe -->
-  <script src="https://js.stripe.com/v3/"></script>
-
-  <!-- HLS.js -->
-  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest" type="application/javascript"></script>
+  <link rel="preload" as="image" href="assets/appicon.png" fetchpriority="high">
+  <link rel="preconnect" href="https://linkviral.seedintrade.com" crossorigin>
 
   <!-- ═════════════════
       SPLASH START
@@ -781,7 +768,7 @@
       <div id="sp-logo-area">
         <div id="sp-shadow"></div>
         <div id="sp-icon-wrap">
-          <img src="assets/appicon.png" alt="Jinkviral" width="280" height="90">
+          <img src="assets/appicon.png" alt="Link Viral" width="280" height="90" fetchpriority="high" decoding="async">
         </div>
       </div>
 
@@ -818,9 +805,6 @@
       SPLASH END
   ══════════════════ -->
 
-  <!-- Razorpay -->
-  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
-
   <!-- Open new Tab -->
   <script>
     window.jsOpenTab = function (url, target) {
@@ -833,34 +817,6 @@
         }
       });
     };
-  </script>
-
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.9.1/firebase-app.js";
-    import { getAnalytics } from "https://www.gstatic.com/firebasejs/9.9.1/firebase-analytics.js";
-    import { getMessaging } from "https://www.gstatic.com/firebasejs/9.9.1/firebase-messaging.js";
-
-    const firebaseConfig = {
-      apiKey: "AIzaSyDtOUk23PrTjn_CXbMf36CRcOK7LnHYGos",
-      authDomain: "yourappname-9aca3.firebaseapp.com",
-      projectId: "yourappname-9aca3",
-      storageBucket: "yourappname-9aca3.firebasestorage.app",
-      messagingSenderId: "946063364931",
-      appId: "1:946063364931:web:2c9415841519ebab57d5f6"
-    };
-
-    const app = initializeApp(firebaseConfig);
-    try {
-      // Firebase Analytics sends web traffic to the linked GA4 property.
-      getAnalytics(app);
-    } catch (error) {
-      console.warn("Firebase Analytics is unavailable on this browser.", error);
-    }
-    try {
-      getMessaging(app);
-    } catch (error) {
-      console.warn("Firebase Messaging is unavailable on this browser.", error);
-    }
   </script>
 
   <!-- Apply crawlable titles and social metadata to public deep links. -->
@@ -930,6 +886,50 @@
   <!-- Flutter bootstrap -->
   <script src="flutter_bootstrap.js" async></script>
 
+  <!-- Payment/login libraries are fetched after the first Flutter frame. They
+       stay available for their routes without competing with the home shell. -->
+  <script>
+    (function () {
+      var loaded = {};
+      window.__dtliveLoadScript = function (src, id) {
+        if (id && loaded[id]) return;
+        if (id) loaded[id] = true;
+        var script = document.createElement('script');
+        script.src = src;
+        script.async = true;
+        if (id) script.id = id;
+        document.head.appendChild(script);
+      };
+
+      var started = false;
+      function loadDeferredLibraries() {
+        if (started) return;
+        started = true;
+        window.__dtliveLoadScript(
+          'https://js.stripe.com/v3/',
+          'dtlive-stripe-js'
+        );
+        window.__dtliveLoadScript(
+          'https://checkout.razorpay.com/v1/checkout.js',
+          'dtlive-razorpay-js'
+        );
+        window.__dtliveLoadScript(
+          'https://accounts.google.com/gsi/client',
+          'dtlive-google-identity-js'
+        );
+        window.__dtliveLoadScript(
+          'https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js',
+          'dtlive-apple-signin-js'
+        );
+      }
+
+      window.addEventListener('flutter-first-frame', function () {
+        setTimeout(loadDeferredLibraries, 900);
+      });
+      setTimeout(loadDeferredLibraries, 3000);
+    }());
+  </script>
+
   <script>
     function hideRecaptchaBadge() {
       const badges = document.getElementsByClassName("grecaptcha-badge");
@@ -955,12 +955,12 @@
       var ver = document.getElementById('sp-ver');
       var stripe = document.getElementById('sp-stripe');
 
-      /* ── 240ms: start drop ──────────────────────────────────────── */
+      /* ── Make the brand visible immediately; animation is decorative. */
       setTimeout(function () {
         wrap.style.opacity = '';          // remove inline opacity:0
         wrap.classList.add('drop');        // triggers logoDrop keyframe
         shade.classList.add('go');         // triggers shadowIn keyframe
-      }, 240);
+      }, 0);
 
       /* ── 640ms: inject shine inside icon wrap ───────────────────── */
       setTimeout(function () {
@@ -975,7 +975,7 @@
           if (shine.parentNode) shine.parentNode.removeChild(shine);
           wrap.style.overflow = '';
         }, 420);
-      }, 640);
+      }, 420);
 
       /* ── 1000ms: inject burst ring ──────────────────────────────── */
       /* Created fresh, appended, auto-removed — zero pre-paint flash */
@@ -994,7 +994,7 @@
         setTimeout(function () {
           if (burst.parentNode) burst.parentNode.removeChild(burst);
         }, 400);
-      }, 1000);
+      }, 700);
 
       /* ── 1120ms: jump 2 ─────────────────────────────────────────── */
       setTimeout(function () {
@@ -1005,29 +1005,29 @@
         setTimeout(function () {
           wrap.classList.remove('jump2');
         }, 340);
-      }, 1120);
+      }, 820);
 
       /* ── 1280ms: separator ─────────────────────────────────────── */
       setTimeout(function () {
         sep.classList.add('go');
-      }, 1280);
+      }, 900);
 
       /* ── 1380ms: tagline ────────────────────────────────────────── */
       setTimeout(function () {
         tag.classList.add('go');
-      }, 1380);
+      }, 960);
 
       /* ── 1950ms: brand stripe ───────────────────────────────────── */
       setTimeout(function () {
         stripe.style.animation = 'stripeIn 500ms ease both';
-      }, 1950);
+      }, 1200);
 
       /* ── 2050ms: dots, bar, version ─────────────────────────────── */
       setTimeout(function () {
         dots.classList.add('go');
         bar.classList.add('go');
         ver.classList.add('go');
-      }, 2050);
+      }, 1250);
 
       /* ── Splash removal ─────────────────────────────────────────── */
       var removed = false;
@@ -1048,8 +1048,8 @@
       }
 
       window.addEventListener('flutter-first-frame', hide);
-      window.addEventListener('flutter-initialized', function () { setTimeout(hide, 200); });
-      setTimeout(hide, 10000);
+      window.addEventListener('flutter-initialized', function () { setTimeout(hide, 80); });
+      setTimeout(hide, 4000);
 
     }());
   </script>

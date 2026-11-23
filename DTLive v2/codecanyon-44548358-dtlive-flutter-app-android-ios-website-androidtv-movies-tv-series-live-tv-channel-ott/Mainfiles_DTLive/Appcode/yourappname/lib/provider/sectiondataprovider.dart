@@ -1,6 +1,13 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../model/sectionbannermodel.dart';
 import '../model/sectionlistmodel.dart' as section;
 import '../model/successmodel.dart';
+import '../utils/constant.dart';
 import '../utils/utils.dart';
 import '../webservice/apiservices.dart';
 import 'package:flutter/material.dart';
@@ -27,6 +34,78 @@ class SectionDataProvider extends ChangeNotifier {
   final Set<int> sectionLoaded = <int>{};
   bool feedRefreshing = false;
 
+  String get _homeCacheKey =>
+      'dtlive_web_home_v2_${Constant.userID ?? 0}_${Constant.userIsKid == true ? 1 : 0}';
+
+  Future<void> restoreCachedHome() async {
+    if (!kIsWeb) return;
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      final raw = preferences.getString(_homeCacheKey);
+      if (raw == null || raw.isEmpty) return;
+      final payload = jsonDecode(raw);
+      if (payload is! Map<String, dynamic>) return;
+      final savedAt = DateTime.tryParse(payload['saved_at']?.toString() ?? '');
+      if (savedAt == null || DateTime.now().difference(savedAt).inHours > 24) {
+        return;
+      }
+
+      final banner = payload['banner'];
+      final sections = payload['sections'];
+      if (banner is Map<String, dynamic>) {
+        sectionBannerModel = SectionBannerModel.fromJson(banner);
+      }
+      if (sections is Map<String, dynamic>) {
+        sectionListModel = section.SectionListModel.fromJson(sections);
+        sectionList = List<section.Result>.from(
+          sectionListModel.result ?? <section.Result>[],
+        );
+        sectionLoaded.addAll(
+          sectionList!
+              .where((item) => item.data?.isNotEmpty == true)
+              .map((item) => item.id ?? 0)
+              .where((id) => id > 0),
+        );
+      }
+      if ((sectionBannerModel.result?.isNotEmpty ?? false) ||
+          (sectionList?.isNotEmpty ?? false)) {
+        loadingBanner = false;
+        loadingSection = false;
+        hasLoadError = false;
+        notifyListeners();
+      }
+    } catch (_) {
+      // Ignore stale or malformed local data and use the API path.
+    }
+  }
+
+  Future<void> _persistHomeCache() async {
+    if (!kIsWeb) return;
+    if ((sectionBannerModel.result?.isNotEmpty ?? false) == false &&
+        (sectionList?.isNotEmpty ?? false) == false) {
+      return;
+    }
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setString(
+        _homeCacheKey,
+        jsonEncode({
+          'saved_at': DateTime.now().toIso8601String(),
+          'banner': sectionBannerModel.toJson(),
+          'sections': section.SectionListModel(
+            status: sectionListModel.status,
+            message: sectionListModel.message,
+            result: sectionList,
+            nextCursor: feedCursor,
+            hasMore: isMorePage,
+          ).toJson(),
+        }),
+      );
+    } catch (_) {
+      // Local persistence is an optimization, never a content dependency.
+    }
+  }
+
   Future<void> getSectionBanner(dynamic typeId, isHomePage) async {
     final previousBanner = sectionBannerModel;
     cBannerIndex = 0;
@@ -41,6 +120,7 @@ class SectionDataProvider extends ChangeNotifier {
         sectionBannerModel = fetchedBanner;
       }
       printLog("getSectionBanner message :==> ${sectionBannerModel.message}");
+      unawaited(_persistHomeCache());
     } on Exception catch (e) {
       printLog("getSectionBanner Exception :==> $e");
       hasLoadError = true;
@@ -179,7 +259,22 @@ class SectionDataProvider extends ChangeNotifier {
       );
       final incoming = page.result ?? <section.Result>[];
       if (refresh || isFirstLoad) {
-        sectionList = incoming;
+        if (refresh && sectionList?.isNotEmpty == true) {
+          final previous = <String, section.Result>{
+            for (final item in sectionList ?? <section.Result>[])
+              _sectionKey(item): item,
+          };
+          for (final item in incoming) {
+            final old = previous[_sectionKey(item)];
+            if (old?.data?.isNotEmpty == true && item.data?.isEmpty == true) {
+              item.data = old!.data;
+            }
+            previous[_sectionKey(item)] = item;
+          }
+          sectionList = previous.values.toList(growable: true);
+        } else {
+          sectionList = incoming;
+        }
       } else {
         final merged = <String, section.Result>{
           for (final item in sectionList ?? <section.Result>[]) _sectionKey(item): item,
@@ -196,6 +291,7 @@ class SectionDataProvider extends ChangeNotifier {
       totalPage = null;
       loadingSection = false;
       notifyListeners();
+      unawaited(_persistHomeCache());
 
       // Individual rows fetch their bounded first page when they enter the
       // viewport. This keeps distant sections and cards out of the first load.
@@ -240,6 +336,7 @@ class SectionDataProvider extends ChangeNotifier {
       sectionCursors[sectionId] = page.nextCursor;
       sectionMore[sectionId] = page.hasMore;
       sectionLoaded.add(sectionId);
+      unawaited(_persistHomeCache());
     } on Exception catch (e) {
       printLog('getFeedSectionItems Exception :==> $e');
     } finally {

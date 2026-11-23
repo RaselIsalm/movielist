@@ -26,6 +26,8 @@ class AdsterraAd extends StatefulWidget {
 class _AdsterraAdState extends State<AdsterraAd> {
   static int _nextViewId = 0;
   late final String _viewType;
+  html.DivElement? _adRoot;
+  bool _adStarted = false;
   bool _collapsed = false;
 
   @override
@@ -49,7 +51,14 @@ class _AdsterraAdState extends State<AdsterraAd> {
         ..style.display = 'flex'
         ..style.justifyContent = 'center'
         ..style.alignItems = 'center';
-      _appendAdCode(element, widget.unit);
+      _adRoot = element;
+      // Do not let an ad network compete with the first Flutter frame or the
+      // first visible cards. The slot remains reserved to avoid layout shift.
+      Future<void>.delayed(const Duration(milliseconds: 700), () {
+        if (!mounted || _adStarted || _adRoot != element) return;
+        _adStarted = true;
+        _appendAdCode(element, widget.unit);
+      });
       return element;
     });
   }

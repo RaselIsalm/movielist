@@ -41,12 +41,6 @@
     @endphp
     <script type="application/ld+json">{!! json_encode($structuredData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) !!}</script>
 
-    <!-- Optional redirect for human visitors -->
-    <script>
-        setTimeout(() => {
-            window.location.href = "{{ $redirect_url }}";
-        }, 1500);
-    </script>
 </head>
 <body>
 <main>

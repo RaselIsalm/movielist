@@ -22,6 +22,7 @@ import 'package:responsive_framework/responsive_framework.dart';
 import 'package:universal_html/html.dart' as html;
 import 'package:uuid/uuid.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
+import 'package:yourappname/analytics/first_party_telemetry.dart';
 
 import '../utils/adhelper.dart';
 import '../firebase_options.dart';
@@ -114,6 +115,15 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   }
 }
 
+Future<void> _initializeFirebaseServices() async {
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  if (!kIsWeb) {
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+  }
+}
+
+late final Future<void> firebaseServicesReady;
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   setUrlStrategy(PathUrlStrategy());
@@ -135,11 +145,10 @@ Future<void> main() async {
     final JSHelper jsHelper = JSHelper();
     jsHelper.setupRightClickBlock();
   }
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-
-  /* Push Notification Set-up */
-  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
-  /* Push Notification Set-up */
+  // Firebase is not needed to render the first web frame. Start it in the
+  // background so the shell and cached catalog can appear immediately.
+  firebaseServicesReady = _initializeFirebaseServices();
+  if (!kIsWeb) await firebaseServicesReady;
 
   await Locales.init([
     'en',
@@ -195,6 +204,9 @@ Future<void> main() async {
       child: const MyApp(),
     ),
   );
+  if (kIsWeb) {
+    FirstPartyTelemetry.instance.track('web_boot', viewport: 'web');
+  }
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 }
 
@@ -230,14 +242,21 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       listen: false,
     );
 
-    /* Push Notification Set-up */
-    PushNotificationService().setupInteractedMessage(context);
-    /* Push Notification Set-up */
-
     if (!mounted) return;
     getAppVersion();
     _getUserData();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (kIsWeb) {
+        unawaited(
+          firebaseServicesReady.then((_) {
+            if (mounted) PushNotificationService().setupInteractedMessage(context);
+          }).catchError((_) {}),
+        );
+      } else {
+        await firebaseServicesReady;
+        if (!mounted) return;
+        PushNotificationService().setupInteractedMessage(context);
+      }
       await connectivityProvider.initConnectivity(context);
       await _getDeviceInfo();
       if (!kIsWeb) await _fetchIntro();

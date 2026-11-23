@@ -9,6 +9,7 @@ use Exception;
 use App\Models\Common;
 use App\Models\Shorts;
 use App\Models\TVShow;
+use Illuminate\Http\Request;
 
 class ShareController extends Controller
 {
@@ -19,7 +20,7 @@ class ShareController extends Controller
         $this->common = new Common();
     }
 
-    public function details($video_type = 0, $type_id = 0, $id = 0, $sub_video_type = 0)
+    public function details(Request $request, $video_type = 0, $type_id = 0, $id = 0, $sub_video_type = 0)
     {
         if ($video_type == 1) {
 
@@ -47,6 +48,10 @@ class ShareController extends Controller
             : "details/{$video_type}/{$type_id}/{$id}";
         $canonical_url = rtrim(config('app.seo_site_url'), '/') . "/{$url_path}";
 
+        if ($shell = $this->flutterShellForHuman($request)) {
+            return $shell;
+        }
+
         return view('share.details', [
             'title' => $data['name'] ?? "",
             'description' => Str::limit($data['description'] ?? "", 150),
@@ -56,7 +61,7 @@ class ShareController extends Controller
             'content_type' => ($video_type == 2 || $sub_video_type == 2) ? 'TVSeries' : 'Movie',
         ]);
     }
-    public function shorts($video_type = 0, $type_id = 0, $id = 0)
+    public function shorts(Request $request, $video_type = 0, $type_id = 0, $id = 0)
     {
         if ($video_type == 8) {
             $data = Shorts::where('id', $id)->where('video_type', $video_type)->where('type_id', $type_id)->where('status', 1)->first();
@@ -71,6 +76,10 @@ class ShareController extends Controller
         $url_path = "shorts/{$video_type}/{$type_id}/{$id}";
         $canonical_url = rtrim(config('app.seo_site_url'), '/') . "/{$url_path}";
 
+        if ($shell = $this->flutterShellForHuman($request)) {
+            return $shell;
+        }
+
         return view('share.details', [
             'title' => $data['name'] ?? "",
             'description' => Str::limit($data['description'] ?? "", 150),
@@ -78,6 +87,35 @@ class ShareController extends Controller
             'url' => $canonical_url,
             'redirect_url' => $canonical_url,
             'content_type' => 'VideoObject',
+        ]);
+    }
+
+    /**
+     * Let normal visitors enter the SPA directly. Crawlers still receive the
+     * server-rendered OG/JSON-LD document, without a redirect loop.
+     */
+    private function flutterShellForHuman(Request $request)
+    {
+        if (!config('app.public_path')) {
+            return null;
+        }
+
+        $userAgent = strtolower((string) $request->userAgent());
+        $crawler = $userAgent !== '' && preg_match(
+            '/bot|crawler|spider|slurp|facebookexternalhit|linkedinbot|twitterbot|whatsapp|telegram/i',
+            $userAgent,
+        );
+        if ($crawler) {
+            return null;
+        }
+
+        $index = public_path('index.html');
+        if (!is_file($index)) {
+            return null;
+        }
+
+        return response()->file($index, [
+            'Cache-Control' => 'no-cache, no-store, must-revalidate',
         ]);
     }
 }

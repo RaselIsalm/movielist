@@ -1,3 +1,8 @@
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../model/genresmodel.dart';
 import '../model/langaugemodel.dart';
 import '../model/channelmodel.dart';
@@ -20,10 +25,55 @@ class HomeProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> getSectionType() async {
-    loading = true;
+  static const String _sectionTypeCacheKey = 'dtlive_web_section_types_v1';
+
+  Future<void> restoreCachedSectionTypes() async {
+    if (!kIsWeb || sectionTypeModel.result?.isNotEmpty == true) return;
     try {
-      sectionTypeModel = await ApiService().sectionType();
+      final preferences = await SharedPreferences.getInstance();
+      final raw = preferences.getString(_sectionTypeCacheKey);
+      if (raw == null || raw.isEmpty) return;
+      final payload = jsonDecode(raw);
+      if (payload is! Map<String, dynamic>) return;
+      final savedAt = DateTime.tryParse(payload['saved_at']?.toString() ?? '');
+      if (savedAt == null || DateTime.now().difference(savedAt).inHours > 24) {
+        return;
+      }
+      final data = payload['data'];
+      if (data is! Map<String, dynamic>) return;
+      final restored = SectionTypeModel.fromJson(data);
+      if (restored.result?.isEmpty ?? true) return;
+      sectionTypeModel = restored;
+      loading = false;
+      notifyListeners();
+    } catch (_) {
+      // A corrupted local snapshot must never block the network request.
+    }
+  }
+
+  Future<void> getSectionType() async {
+    final hasExistingData = sectionTypeModel.result?.isNotEmpty == true;
+    if (!hasExistingData) {
+      loading = true;
+      notifyListeners();
+    }
+    try {
+      final fetched = await ApiService().sectionType();
+      if (fetched.status == 200 && fetched.result?.isNotEmpty == true) {
+        sectionTypeModel = fetched;
+      } else if (!hasExistingData) {
+        sectionTypeModel = fetched;
+      }
+      if (kIsWeb && sectionTypeModel.result?.isNotEmpty == true) {
+        final preferences = await SharedPreferences.getInstance();
+        await preferences.setString(
+          _sectionTypeCacheKey,
+          jsonEncode({
+            'saved_at': DateTime.now().toIso8601String(),
+            'data': sectionTypeModel.toJson(),
+          }),
+        );
+      }
     } on Exception catch (e) {
       printLog("getSectionType Exception :==> $e");
     }

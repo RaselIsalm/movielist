@@ -8,7 +8,6 @@ import '../webpages/webclipsepisodes.dart';
 import '../model/playermodel.dart';
 import '../pages/activetv.dart';
 import '../players/player_vdocipher.dart';
-import '../provider/homeprovider.dart';
 import '../subscription/allpayment.dart';
 import '../subscription/contactus.dart';
 import '../subscription/mypurchaselist.dart';
@@ -78,10 +77,6 @@ class RoutesConfig {
         name: RoutesConstant.searchPage,
         path: '/${RoutesConstant.searchPage}',
         builder: (context, state) {
-          final homeProvider = Provider.of<HomeProvider>(
-            context,
-            listen: false,
-          );
           String newPage = "";
           printLog("searchPage extra ====> ${state.extra}");
           if (state.extra != null && state.extra is String) {
@@ -89,7 +84,6 @@ class RoutesConfig {
           }
           printLog("searchPage newPage ==> $newPage");
 
-          homeProvider.getSectionType();
 
           return WebSearch(
             newPage: RoutesConstant.searchPage,
@@ -104,16 +98,11 @@ class RoutesConfig {
         name: RoutesConstant.storePage,
         path: '/${RoutesConstant.storePage}',
         builder: (context, state) {
-          final homeProvider = Provider.of<HomeProvider>(
-            context,
-            listen: false,
-          );
           String newPage = "";
           if (state.extra != null && state.extra is String) {
             newPage = state.extra as String;
           }
           printLog("newPage =====> $newPage");
-          homeProvider.getSectionType();
           return WebRentStore(
             newPage: RoutesConstant.storePage,
             oldPage: newPage,
@@ -127,16 +116,11 @@ class RoutesConfig {
         name: RoutesConstant.myWatchlistPage,
         path: '/${RoutesConstant.myWatchlistPage}',
         builder: (context, state) {
-          final homeProvider = Provider.of<HomeProvider>(
-            context,
-            listen: false,
-          );
           String newPage = "";
           if (state.extra != null && state.extra is String) {
             newPage = state.extra as String;
           }
           printLog("newPage =====> $newPage");
-          homeProvider.getSectionType();
           return WebMyWatchlist(
             newPage: RoutesConstant.myWatchlistPage,
             oldPage: newPage,
@@ -150,10 +134,6 @@ class RoutesConfig {
         path:
             '/${RoutesConstant.clipsEpisodesPage}/:videotype/:typeid/:videoid/:subvideotype',
         builder: (context, state) {
-          final homeProvider = Provider.of<HomeProvider>(
-            context,
-            listen: false,
-          );
 
           final videoTypeStr = state.pathParameters['videotype'];
           final typeIdStr = state.pathParameters['typeid'];
@@ -170,7 +150,6 @@ class RoutesConfig {
             newPage = (state.extra as Map<String, dynamic>)['newpage'] ?? "";
           }
 
-          homeProvider.getSectionType();
 
           return WebClipsEpisodes(
             newPage: RoutesConstant.clipsEpisodesPage,
@@ -187,10 +166,6 @@ class RoutesConfig {
         path:
             '/${RoutesConstant.clipsEpisodesPage}/:videotype/:typeid/:videoid',
         builder: (context, state) {
-          final homeProvider = Provider.of<HomeProvider>(
-            context,
-            listen: false,
-          );
 
           final videoTypeStr = state.pathParameters['videotype'];
           final typeIdStr = state.pathParameters['typeid'];
@@ -205,7 +180,6 @@ class RoutesConfig {
             newPage = (state.extra as Map<String, dynamic>)['newpage'] ?? "";
           }
 
-          homeProvider.getSectionType();
 
           return WebClipsEpisodes(
             newPage: RoutesConstant.clipsEpisodesPage,
@@ -224,10 +198,6 @@ class RoutesConfig {
         path:
             '/${RoutesConstant.contentDetailsPage}/:videotype/:typeid/:videoid/:subvideotype',
         builder: (context, state) {
-          final homeProvider = Provider.of<HomeProvider>(
-            context,
-            listen: false,
-          );
 
           final videoTypeStr = state.pathParameters['videotype'];
           final typeIdStr = state.pathParameters['typeid'];
@@ -244,7 +214,6 @@ class RoutesConfig {
             newPage = (state.extra as Map<String, dynamic>)['newpage'] ?? "";
           }
 
-          homeProvider.getSectionType();
 
           final bool isShowDetails =
               (videoType == Constant.upcomingContentType ||
@@ -280,10 +249,6 @@ class RoutesConfig {
         path:
             '/${RoutesConstant.contentDetailsPage}/:videotype/:typeid/:videoid',
         builder: (context, state) {
-          final homeProvider = Provider.of<HomeProvider>(
-            context,
-            listen: false,
-          );
 
           final videoTypeStr = state.pathParameters['videotype'];
           final typeIdStr = state.pathParameters['typeid'];
@@ -298,7 +263,6 @@ class RoutesConfig {
             newPage = (state.extra as Map<String, dynamic>)['newpage'] ?? "";
           }
 
-          homeProvider.getSectionType();
 
           final bool isShowDetails = (videoType == Constant.showContentType);
 
@@ -331,10 +295,6 @@ class RoutesConfig {
         path:
             '/${RoutesConstant.sectionDetailsPage}/:itemid/:videotype/:screenlayout',
         builder: (context, state) {
-          final homeProvider = Provider.of<HomeProvider>(
-            context,
-            listen: false,
-          );
 
           String newPage = "";
           String? videoType, itemID, screenLayout, appBarTitle;
@@ -356,7 +316,6 @@ class RoutesConfig {
           printLog("sectionDetails appBarTitle ===> $appBarTitle");
 
           if (itemID != null && videoType != null) {
-            homeProvider.getSectionType();
             return WebSectionViewAll(
               sectionId: int.parse(itemID),
               videoType: int.parse(videoType),
@@ -380,10 +339,6 @@ class RoutesConfig {
       GoRoute(
         path: '/${RoutesConstant.videoByCatPage}/:itemid',
         builder: (context, state) {
-          final homeProvider = Provider.of<HomeProvider>(
-            context,
-            listen: false,
-          );
 
           String newPage = "";
           String? itemID, layoutType, appBarTitle;
@@ -403,7 +358,6 @@ class RoutesConfig {
           printLog("videoByCatPage appBarTitle ===> $appBarTitle");
 
           if (itemID != null) {
-            homeProvider.getSectionType();
             return WebVideosByID(
               int.parse(itemID),
               appBarTitle ?? "",
@@ -426,10 +380,6 @@ class RoutesConfig {
       GoRoute(
         path: '/${RoutesConstant.videoByLanguagePage}/:itemid',
         builder: (context, state) {
-          final homeProvider = Provider.of<HomeProvider>(
-            context,
-            listen: false,
-          );
 
           String newPage = "";
           String? itemID, layoutType, appBarTitle;
@@ -449,7 +399,6 @@ class RoutesConfig {
           printLog("videoByLanguage appBarTitle ===> $appBarTitle");
 
           if (itemID != null) {
-            homeProvider.getSectionType();
             return WebVideosByID(
               int.parse(itemID),
               appBarTitle ?? "",
@@ -472,10 +421,6 @@ class RoutesConfig {
       GoRoute(
         path: '/${RoutesConstant.videoByChannelPage}/:itemid',
         builder: (context, state) {
-          final homeProvider = Provider.of<HomeProvider>(
-            context,
-            listen: false,
-          );
 
           String newPage = "";
           String? itemID, layoutType, appBarTitle;
@@ -495,7 +440,6 @@ class RoutesConfig {
           printLog("videoByChannel appBarTitle ===> $appBarTitle");
 
           if (itemID != null) {
-            homeProvider.getSectionType();
             return WebVideosByID(
               int.parse(itemID),
               appBarTitle ?? "",
@@ -518,10 +462,6 @@ class RoutesConfig {
       GoRoute(
         path: '/${RoutesConstant.videoByCastPage}/:itemid',
         builder: (context, state) {
-          final homeProvider = Provider.of<HomeProvider>(
-            context,
-            listen: false,
-          );
 
           String newPage = "";
           String? itemID, layoutType, appBarTitle;
@@ -541,7 +481,6 @@ class RoutesConfig {
           printLog("videoByCast appBarTitle ===> $appBarTitle");
 
           if (itemID != null) {
-            homeProvider.getSectionType();
             return WebVideosByID(
               int.parse(itemID),
               appBarTitle ?? "",
@@ -565,10 +504,6 @@ class RoutesConfig {
         path:
             '/${RoutesConstant.relatedContentPage}/:itemid/:typeid/:videotype/:subvideotype',
         builder: (context, state) {
-          final homeProvider = Provider.of<HomeProvider>(
-            context,
-            listen: false,
-          );
 
           String newPage = "";
           String? itemID, appBarTitle, subVideoType, videoType, typeId;
@@ -592,7 +527,6 @@ class RoutesConfig {
           printLog("relatedContent appBarTitle ===> $appBarTitle");
 
           if (itemID != null) {
-            homeProvider.getSectionType();
             return WebViewAll(
               appBarTitle: RoutesConstant.relatedContentPage,
               videoId: int.parse(itemID),
@@ -616,10 +550,6 @@ class RoutesConfig {
         path:
             '/${RoutesConstant.relatedContentPage}/:itemid/:typeid/:videotype',
         builder: (context, state) {
-          final homeProvider = Provider.of<HomeProvider>(
-            context,
-            listen: false,
-          );
 
           String newPage = "";
           String? itemID, appBarTitle, videoType, typeId;
@@ -641,7 +571,6 @@ class RoutesConfig {
           printLog("relatedContent appBarTitle ===> $appBarTitle");
 
           if (itemID != null) {
-            homeProvider.getSectionType();
             return WebViewAll(
               appBarTitle: RoutesConstant.relatedContentPage,
               videoId: int.parse(itemID),
@@ -667,10 +596,6 @@ class RoutesConfig {
         name: RoutesConstant.continueWatchPage,
         path: '/${RoutesConstant.continueWatchPage}',
         builder: (context, state) {
-          final homeProvider = Provider.of<HomeProvider>(
-            context,
-            listen: false,
-          );
           String newPage = "";
           Map<String, dynamic> extraData = {};
           if (state.extra != null && state.extra is Map<String, dynamic>) {
@@ -678,7 +603,6 @@ class RoutesConfig {
             newPage = extraData['newpage'] as String;
           }
           printLog("newPage =====> $newPage");
-          homeProvider.getSectionType();
           return WebViewAll(
             appBarTitle: RoutesConstant.continueWatchPage,
             videoId: 0,
@@ -800,16 +724,11 @@ class RoutesConfig {
         name: RoutesConstant.avatarPage,
         path: '/${RoutesConstant.avatarPage}',
         builder: (context, state) {
-          final homeProvider = Provider.of<HomeProvider>(
-            context,
-            listen: false,
-          );
           String newPage = "";
           if (state.extra != null && state.extra is String) {
             newPage = state.extra as String;
           }
           printLog("newPage =======> $newPage");
-          homeProvider.getSectionType();
           return WebProfileAvatar(
             newPage: RoutesConstant.avatarPage,
             oldPage: newPage,
@@ -823,16 +742,11 @@ class RoutesConfig {
         name: RoutesConstant.myProfilePage,
         path: '/${RoutesConstant.myProfilePage}',
         builder: (context, state) {
-          final homeProvider = Provider.of<HomeProvider>(
-            context,
-            listen: false,
-          );
           String newPage = "";
           if (state.extra != null && state.extra is String) {
             newPage = state.extra as String;
           }
           printLog("newPage =======> $newPage");
-          homeProvider.getSectionType();
           return WebProfile(
             newPage: RoutesConstant.myProfilePage,
             oldPage: newPage,
@@ -846,16 +760,11 @@ class RoutesConfig {
         name: RoutesConstant.mySpacePage,
         path: '/${RoutesConstant.mySpacePage}',
         builder: (context, state) {
-          final homeProvider = Provider.of<HomeProvider>(
-            context,
-            listen: false,
-          );
           String newPage = "";
           if (state.extra != null && state.extra is String) {
             newPage = state.extra as String;
           }
           printLog("newPage =======> $newPage");
-          homeProvider.getSectionType();
           return WebMySpace(
             newPage: RoutesConstant.mySpacePage,
             oldPage: newPage,
@@ -869,16 +778,11 @@ class RoutesConfig {
         name: RoutesConstant.settingsPage,
         path: '/${RoutesConstant.settingsPage}',
         builder: (context, state) {
-          final homeProvider = Provider.of<HomeProvider>(
-            context,
-            listen: false,
-          );
           String newPage = "";
           if (state.extra != null && state.extra is String) {
             newPage = state.extra as String;
           }
           printLog("newPage =======> $newPage");
-          homeProvider.getSectionType();
           return WebSettings(
             newPage: RoutesConstant.settingsPage,
             oldPage: newPage,
@@ -892,16 +796,11 @@ class RoutesConfig {
         name: RoutesConstant.editProfilePage,
         path: '/${RoutesConstant.editProfilePage}',
         builder: (context, state) {
-          final homeProvider = Provider.of<HomeProvider>(
-            context,
-            listen: false,
-          );
           String newPage = "";
           if (state.extra != null && state.extra is String) {
             newPage = state.extra as String;
           }
           printLog("newPage =======> $newPage");
-          homeProvider.getSectionType();
           return WebProfileEdit(
             newPage: RoutesConstant.editProfilePage,
             oldPage: newPage,
@@ -915,16 +814,11 @@ class RoutesConfig {
         name: RoutesConstant.activeTVPage,
         path: '/${RoutesConstant.activeTVPage}',
         builder: (context, state) {
-          final homeProvider = Provider.of<HomeProvider>(
-            context,
-            listen: false,
-          );
           String newPage = "";
           if (state.extra != null && state.extra is String) {
             newPage = state.extra as String;
           }
           printLog("newPage =======> $newPage");
-          homeProvider.getSectionType();
           return ActiveTV(
             newPage: RoutesConstant.activeTVPage,
             oldPage: newPage,
@@ -955,16 +849,11 @@ class RoutesConfig {
         name: RoutesConstant.mySubscribePlanPage,
         path: '/${RoutesConstant.mySubscribePlanPage}',
         builder: (context, state) {
-          final homeProvider = Provider.of<HomeProvider>(
-            context,
-            listen: false,
-          );
           String newPage = "";
           if (state.extra != null && state.extra is String) {
             newPage = state.extra as String;
           }
           printLog("newPage =======> $newPage");
-          homeProvider.getSectionType();
 
           return MySubscribedPlan(
             newPage: RoutesConstant.mySubscribePlanPage,
@@ -978,16 +867,11 @@ class RoutesConfig {
         name: RoutesConstant.contactUsPage,
         path: '/${RoutesConstant.contactUsPage}',
         builder: (context, state) {
-          final homeProvider = Provider.of<HomeProvider>(
-            context,
-            listen: false,
-          );
           String newPage = "";
           if (state.extra != null && state.extra is String) {
             newPage = state.extra as String;
           }
           printLog("newPage =======> $newPage");
-          homeProvider.getSectionType();
           return ContactUs(
             newPage: RoutesConstant.contactUsPage,
             oldPage: newPage,
@@ -1057,16 +941,11 @@ class RoutesConfig {
         name: RoutesConstant.subsHistoryPage,
         path: '/${RoutesConstant.subsHistoryPage}',
         builder: (context, state) {
-          final homeProvider = Provider.of<HomeProvider>(
-            context,
-            listen: false,
-          );
           String newPage = "";
           if (state.extra != null && state.extra is String) {
             newPage = state.extra as String;
           }
           printLog("newPage =======> $newPage");
-          homeProvider.getSectionType();
           return SubscriptionHistory(
             newPage: RoutesConstant.subsHistoryPage,
             oldPage: newPage,
@@ -1080,16 +959,11 @@ class RoutesConfig {
         name: RoutesConstant.rentPurchasePage,
         path: '/${RoutesConstant.rentPurchasePage}',
         builder: (context, state) {
-          final homeProvider = Provider.of<HomeProvider>(
-            context,
-            listen: false,
-          );
           String newPage = "";
           if (state.extra != null && state.extra is String) {
             newPage = state.extra as String;
           }
           printLog("newPage =======> $newPage");
-          homeProvider.getSectionType();
           return MyPurchaselist(
             newPage: RoutesConstant.rentPurchasePage,
             oldPage: newPage,
@@ -1103,7 +977,6 @@ class RoutesConfig {
         name: RoutesConstant.referEarnPage,
         path: '/${RoutesConstant.referEarnPage}',
         builder: (context, state) {
-          Provider.of<HomeProvider>(context, listen: false).getSectionType();
           return const ReferEarn();
         },
       ),
@@ -1113,7 +986,6 @@ class RoutesConfig {
         name: RoutesConstant.referEarnHistoryPage,
         path: '/${RoutesConstant.referEarnHistoryPage}',
         builder: (context, state) {
-          Provider.of<HomeProvider>(context, listen: false).getSectionType();
           Provider.of<ReferEarnHistoryProvider>(
             context,
             listen: false,
@@ -1127,7 +999,6 @@ class RoutesConfig {
         name: RoutesConstant.walletPage,
         path: '/${RoutesConstant.walletPage}',
         builder: (context, state) {
-          Provider.of<HomeProvider>(context, listen: false).getSectionType();
           return const Wallet();
         },
       ),
@@ -1137,7 +1008,6 @@ class RoutesConfig {
         name: RoutesConstant.walletHistoryPage,
         path: '/${RoutesConstant.walletHistoryPage}',
         builder: (context, state) {
-          Provider.of<HomeProvider>(context, listen: false).getSectionType();
           Provider.of<WalletProvider>(
             context,
             listen: false,
@@ -1152,10 +1022,6 @@ class RoutesConfig {
             '/${RoutesConstant.ratingReviewPage}/:videotype/:subvideotype/:videoid',
         name: RoutesConstant.ratingReviewPage,
         builder: (context, state) {
-          final homeProvider = Provider.of<HomeProvider>(
-            context,
-            listen: false,
-          );
 
           final videoTypeStr = state.pathParameters['videotype'];
           final subVideoTypeStr = state.pathParameters['subvideotype'];
@@ -1176,7 +1042,6 @@ class RoutesConfig {
             contentType = extra['contenttype'] ?? "movie";
           }
 
-          homeProvider.getSectionType();
 
           return WebRatingReview(
             newPage: RoutesConstant.ratingReviewPage,
