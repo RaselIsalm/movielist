@@ -154,6 +154,7 @@ class WebHomeState extends State<WebHome> {
     List<type.Result>? sectionTypeList,
   ) async {
     // Keep the last successful catalog visible while the next request runs.
+    // The release build also versions its entrypoint to bypass edge caches.
     // Clearing here made a transient API/R2 timeout look like an empty home page.
     sectionDataProvider.setLoading(true);
     final isDefaultTab = position == -1;
