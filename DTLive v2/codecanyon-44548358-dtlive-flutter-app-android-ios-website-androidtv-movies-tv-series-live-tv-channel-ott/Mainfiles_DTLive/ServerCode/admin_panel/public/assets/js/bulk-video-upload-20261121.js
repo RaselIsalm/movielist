@@ -46,10 +46,7 @@
                     return;
                 }
                 const errors = response.errors || response.message || 'Upload request failed.';
-                const requestError = new Error(Array.isArray(errors) ? errors.join(' ') : errors);
-                requestError.status = xhr.status;
-                requestError.response = response;
-                reject(requestError);
+                reject(new Error(Array.isArray(errors) ? errors.join(' ') : errors));
             };
             xhr.onerror = function () { reject(new Error('Network error. Check your connection and retry this file.')); };
             xhr.onabort = function () { reject(new Error('Upload was cancelled.')); };
@@ -312,7 +309,6 @@
         const count = Math.ceil(item.file.size / actualChunkSize);
         const directR2 = Boolean(initialized.direct_r2 && initialized.part_url && config.partUrl);
         item.label = 'Uploading';
-        let finalChunkReceipt = null;
         for (let index = 0; index < count; index++) {
             const start = index * actualChunkSize;
             const end = Math.min(start + actualChunkSize, item.file.size);
@@ -335,14 +331,14 @@
                 receipt.append('chunk_count', count);
                 receipt.append('part_size', chunk.size);
                 receipt.append('part_etag', etag);
-                finalChunkReceipt = await requestChunk(config.chunkUrl, receipt);
+                await requestChunk(config.chunkUrl, receipt);
             } else {
                 const body = new FormData();
                 body.append('upload_id', item.uploadId);
                 body.append('chunk_index', index);
                 body.append('chunk_count', count);
                 body.append('chunk', chunk, item.file.name);
-                finalChunkReceipt = await requestChunk(config.chunkUrl, body, function (event) {
+                await requestChunk(config.chunkUrl, body, function (event) {
                     if (event.lengthComputable) {
                         item.progress = Math.floor(((start + event.loaded) / item.file.size) * 100);
                         renderQueue();
@@ -351,10 +347,6 @@
             }
             item.progress = Math.floor((end / item.file.size) * 100);
             renderQueue();
-        }
-
-        if (!finalChunkReceipt || finalChunkReceipt.complete !== true) {
-            throw new Error('The server has not confirmed that this video is complete. Retry this file before saving the batch.');
         }
 
         item.label = 'Finishing upload';
@@ -554,23 +546,6 @@
             pollServerStatus();
         } catch (error) {
             $('#dvloader').hide();
-            const incompleteIds = error.response && Array.isArray(error.response.incomplete_upload_ids)
-                ? error.response.incomplete_upload_ids
-                : [];
-            if (incompleteIds.length) {
-                queue.forEach(function (item) {
-                    if (incompleteIds.indexOf(item.uploadId) !== -1) {
-                        item.status = 'failed';
-                        item.label = 'Server needs this upload retried';
-                        item.error = 'The server could not confirm the complete uploaded file. Retry this file.';
-                    }
-                });
-                toastr.error(incompleteIds.length + ' upload' + (incompleteIds.length === 1 ? ' was' : 's were') + ' not confirmed by the server. Retry the marked file' + (incompleteIds.length === 1 ? '' : 's') + '; no videos in this batch were queued.');
-                saving = false;
-                processing = false;
-                renderQueue();
-                return;
-            }
             const saved = queue.filter(function (item) { return item.saved; }).length;
             toastr.error((error.message || 'Unable to save the next video.') + ' ' + saved + ' of ' + queue.length + ' are saved. Click Save batch to safely continue.');
             saving = false;
