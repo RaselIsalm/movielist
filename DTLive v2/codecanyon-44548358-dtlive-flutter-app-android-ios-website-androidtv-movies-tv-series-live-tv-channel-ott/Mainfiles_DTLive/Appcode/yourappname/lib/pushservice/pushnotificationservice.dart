@@ -191,6 +191,14 @@ class PushNotificationService {
       "https://www.googleapis.com/auth/firebase.messaging";
 
   static Future<String> getAccessToken() async {
+    // A Firebase service-account key is a server-only credential. The web
+    // client must never try to load it as an asset (the key is intentionally
+    // excluded from the repository and is unavailable in the web build).
+    if (kIsWeb) {
+      Constant.accessToken = null;
+      return '';
+    }
+
     try {
       final response = await Utils.loadJsonFromAssets(
         'assets/firebase/firebase_service_account.json',
