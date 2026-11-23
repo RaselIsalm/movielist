@@ -206,7 +206,13 @@ class Dimens {
       MediaQuery.of(context).size.width >= 1100;
 
   static double getResponsiveHeight(BuildContext context, double sideMargins) {
-    return ((MediaQuery.of(context).size.width - sideMargins) / landRatio);
+    final width = MediaQuery.of(context).size.width;
+    final height = (width - sideMargins) / landRatio;
+    // A full-width 16:9-style hero becomes an unusable multi-thousand-pixel
+    // blank area on ultrawide monitors. Keep the desktop hero within a useful
+    // first viewport while preserving the original ratio on mobile/TV.
+    if (kIsWeb && width > 840 && height > 760) return 760;
+    return height;
   }
 
   static double getResponsivePortHeight(

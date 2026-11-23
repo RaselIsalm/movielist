@@ -23,7 +23,10 @@ class ShimmerUtils {
                 ? bannerWeb(context)
                 : bannerMobile(context),
             ListView.builder(
-              itemCount: 10, // itemCount must be greater than 5
+              // The first frame only needs enough placeholders to establish
+              // the feed rhythm. Rendering all ten sections here made a cold
+              // web visit spend work on content that is below the fold.
+              itemCount: kIsWeb ? 3 : 10,
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               itemBuilder: (BuildContext context, int index) {

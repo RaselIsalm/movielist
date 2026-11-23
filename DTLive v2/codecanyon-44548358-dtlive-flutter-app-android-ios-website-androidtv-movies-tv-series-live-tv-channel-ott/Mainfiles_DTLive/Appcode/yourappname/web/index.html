@@ -40,6 +40,21 @@
   <link rel="preload" as="image" href="assets/appicon.png" fetchpriority="high">
   <link rel="preconnect" href="https://linkviral.seedintrade.com" crossorigin>
 
+  <!-- Ask an existing Flutter worker to revalidate immediately. This keeps
+       users from being trapped on a previous cached shell after a deploy. -->
+  <script>
+    (function () {
+      if (!('serviceWorker' in navigator)) return;
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.getRegistrations().then(function (registrations) {
+          registrations.forEach(function (registration) {
+            registration.update().catch(function () {});
+          });
+        }).catch(function () {});
+      });
+    }());
+  </script>
+
   <!-- ═════════════════
       SPLASH START
   ══════════════════ -->
@@ -493,6 +508,22 @@
       align-items: center;
       /* width matches the icon so shadow/burst position correctly */
       width: clamp(120px, 30vmin, 280px);
+    }
+
+    /* Keep the brand painted even while the Flutter bundle is downloading.
+       The splash animation is decorative and must never hide the first
+       useful frame on a slow mobile connection. */
+    #sp-icon-wrap {
+      position: relative;
+      width: 100%;
+      opacity: 1;
+    }
+
+    #sp-icon-wrap img {
+      width: 100%;
+      height: auto;
+      display: block;
+      object-fit: contain;
     }
 
     /*

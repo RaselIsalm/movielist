@@ -113,18 +113,21 @@ class WebHomeState extends State<WebHome> {
     ]);
     if (!mounted) return;
 
-    final statuses = await statusFuture;
-    subscriptionStatus = statuses[0];
-    continueWatchingStatus = statuses[1];
-    printLog('_getData subscriptionStatus =======> $subscriptionStatus');
-    printLog('_getData continueWatchingStatus ===> $continueWatchingStatus');
-
+    // Start the catalog request as soon as the local shell is available. The
+    // account-status calls are independent and must not delay the first
+    // banner/feed paint on a cold visit.
     unawaited(generalProvider.getGeneralsetting(context));
     unawaited(homeProvider.getSectionType());
 
     if (widget.newPage == RoutesConstant.homePage) {
       unawaited(getTabData(-1, null));
     }
+
+    final statuses = await statusFuture;
+    subscriptionStatus = statuses[0];
+    continueWatchingStatus = statuses[1];
+    printLog('_getData subscriptionStatus =======> $subscriptionStatus');
+    printLog('_getData continueWatchingStatus ===> $continueWatchingStatus');
 
     printLog("<===============================>");
     printLog('_getData oldPage ==> ${widget.oldPage}');
