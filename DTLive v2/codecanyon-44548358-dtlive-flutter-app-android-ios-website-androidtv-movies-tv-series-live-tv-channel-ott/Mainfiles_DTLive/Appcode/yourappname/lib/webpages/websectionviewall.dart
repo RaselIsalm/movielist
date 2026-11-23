@@ -18,6 +18,7 @@ import '../widget/nodata.dart';
 import '../utils/color.dart';
 import '../widget/mynetworkimg.dart';
 import '../webwidget/web_hover_card.dart';
+import '../webwidget/web_content_with_ad_rail.dart';
 
 class WebSectionViewAll extends StatefulWidget {
   final int sectionId, videoType;
@@ -202,19 +203,20 @@ class WebSectionViewAllState extends State<WebSectionViewAll> {
         }
         if (sectionViewAllProvider.sectionDetailList == null ||
             (sectionViewAllProvider.sectionDetailList?.length ?? 0) > 0) {
+          final content = widget.videoType == Constant.genresType
+              ? _buildGenres()
+              : (widget.videoType == Constant.languageType
+                    ? _buildLanguage()
+                    : (widget.videoType == Constant.channelType
+                          ? _buildChannelItem()
+                          : _buildVideoItem()));
+
           return Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               SizedBox(height: Dimens.homeTabHeight),
               _buildAppbar(),
-              if (widget.videoType == Constant.genresType)
-                _buildGenres()
-              else if (widget.videoType == Constant.languageType)
-                _buildLanguage()
-              else if (widget.videoType == Constant.channelType)
-                _buildChannelItem()
-              else
-                _buildVideoItem(),
+              WebContentWithAdRail(child: content),
               const AdsterraAd(
                 unit: AdsterraUnit.nativeBanner,
                 margin: EdgeInsets.symmetric(vertical: 16),
@@ -259,95 +261,120 @@ class WebSectionViewAllState extends State<WebSectionViewAll> {
   }
 
   Widget _buildVideoItem() {
-    final bool bigScreen = Dimens.isBigScreen(context);
-    final double cardW = bigScreen
-        ? Dimens.widthPortOtherWeb
-        : Dimens.widthPortOther;
-    final double cardH = bigScreen
-        ? Dimens.heightPortOtherWeb
-        : Dimens.heightPortOther;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final bigScreen = Dimens.isBigScreen(context);
+        final horizontalPadding = bigScreen ? 20.0 : 16.0;
+        final spacing = bigScreen ? 12.0 : 8.0;
+        final width = constraints.hasBoundedWidth
+            ? constraints.maxWidth
+            : MediaQuery.sizeOf(context).width;
+        final gridWidth = (width - horizontalPadding * 2).clamp(0.0, width);
+        final cardW = bigScreen
+            ? Dimens.widthPortOtherWeb
+            : ((gridWidth - spacing * 2) / 3).clamp(96.0, 165.0).toDouble();
+        final cardH = bigScreen
+            ? Dimens.heightPortOtherWeb
+            : cardW * (Dimens.heightPortOther / Dimens.widthPortOther);
 
-    final cards = <Widget>[];
-    final count = sectionViewAllProvider.sectionDetailList?.length ?? 0;
-    for (var position = 0; position < count; position++) {
-      cards.add(
-        WebHoverCard(
-          cardW: cardW,
-          cardH: cardH,
-          borderRadius: Dimens.cardRadiusMedium,
-          imageUrl:
-              sectionViewAllProvider.sectionDetailList?[position].thumbnail
-                  .toString() ??
-              "",
-          onTap: () {
-            printLog("Clicked on position ==> $position");
-            Utils.openDetails(
-              context: context,
-              videoId:
-                  sectionViewAllProvider.sectionDetailList?[position].id ?? 0,
-              subVideoType:
-                  sectionViewAllProvider.sectionDetailList?[position]
-                          .subVideoType ??
+        final cards = <Widget>[];
+        final count = sectionViewAllProvider.sectionDetailList?.length ?? 0;
+        for (var position = 0; position < count; position++) {
+          cards.add(
+            WebHoverCard(
+              cardW: cardW,
+              cardH: cardH,
+              borderRadius: Dimens.cardRadiusMedium,
+              imageUrl:
+                  sectionViewAllProvider.sectionDetailList?[position].thumbnail
+                      .toString() ??
+                  "",
+              onTap: () {
+                printLog("Clicked on position ==> $position");
+                Utils.openDetails(
+                  context: context,
+                  videoId:
+                      sectionViewAllProvider.sectionDetailList?[position].id ??
                       0,
-              videoType: sectionViewAllProvider.sectionDetailList?[position]
-                      .videoType ??
-                  0,
-              typeId: sectionViewAllProvider.sectionDetailList?[position]
-                      .typeId ??
-                  0,
-              newPage: RoutesConstant.contentDetailsPage,
-              oldPage: widget.newPage ?? "",
-              reqText: "",
+                  subVideoType:
+                      sectionViewAllProvider.sectionDetailList?[position]
+                              .subVideoType ??
+                          0,
+                  videoType: sectionViewAllProvider.sectionDetailList?[position]
+                          .videoType ??
+                      0,
+                  typeId: sectionViewAllProvider.sectionDetailList?[position]
+                          .typeId ??
+                      0,
+                  newPage: RoutesConstant.contentDetailsPage,
+                  oldPage: widget.newPage ?? "",
+                  reqText: "",
+                );
+              },
+            ),
+          );
+          if (position == 5) {
+            cards.add(
+              SizedBox(
+                width: gridWidth,
+                child: const Center(
+                  child: AdsterraAd(
+                    unit: AdsterraUnit.banner320x50,
+                    margin: EdgeInsets.symmetric(vertical: 8),
+                  ),
+                ),
+              ),
             );
-          },
-        ),
-      );
-      if (position == 5) {
-        cards.add(
-          const AdsterraAd(
-            unit: AdsterraUnit.banner320x50,
-            margin: EdgeInsets.symmetric(vertical: 8),
+          }
+        }
+
+        return Padding(
+          padding: EdgeInsets.fromLTRB(
+            horizontalPadding,
+            8,
+            horizontalPadding,
+            20,
+          ),
+          child: Wrap(
+            spacing: spacing,
+            runSpacing: bigScreen ? 16 : 10,
+            alignment: WrapAlignment.center,
+            children: cards,
           ),
         );
-      }
-    }
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-      child: Wrap(
-        spacing: bigScreen ? 12 : 8,
-        runSpacing: bigScreen ? 16 : 10,
-        alignment: WrapAlignment.start,
-        children: cards,
-      ),
+      },
     );
   }
 
   Widget _buildChannelItem() {
-    final bool bigScreen = Dimens.isBigScreen(context);
-    final double cardW = bigScreen
-        ? Dimens.widthChannelWeb
-        : Dimens.widthChannel;
-    final double cardH = bigScreen
-        ? Dimens.heightChannelWeb
-        : Dimens.heightChannel;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final bigScreen = Dimens.isBigScreen(context);
+        final horizontalPadding = bigScreen ? 20.0 : 16.0;
+        final spacing = bigScreen ? 20.0 : 10.0;
+        final width = constraints.hasBoundedWidth
+            ? constraints.maxWidth
+            : MediaQuery.sizeOf(context).width;
+        final gridWidth = (width - horizontalPadding * 2).clamp(0.0, width);
+        final cardW = bigScreen
+            ? Dimens.widthChannelWeb
+            : ((gridWidth - spacing * 3) / 4).clamp(64.0, 150.0).toDouble();
+        final cardH = bigScreen
+            ? Dimens.heightChannelWeb
+            : cardW * (Dimens.heightChannel / Dimens.widthChannel);
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-      child: Wrap(
-        spacing: bigScreen ? 20 : 10,
-        runSpacing: bigScreen ? 20 : 10,
-        alignment: WrapAlignment.start,
-        children: List.generate(
-          sectionViewAllProvider.sectionDetailList?.length ?? 0,
-          (position) => WebHoverCard(
-            cardW: cardW,
-            cardH: cardH,
+        final cards = <Widget>[];
+        final count = sectionViewAllProvider.sectionDetailList?.length ?? 0;
+        for (var position = 0; position < count; position++) {
+          cards.add(
+            WebHoverCard(
+              cardW: cardW,
+              cardH: cardH,
             borderRadius: Dimens.cardRadiusMedium,
             imageUrl:
-                sectionViewAllProvider.sectionDetailList?[position].landscapeImg
-                    .toString() ??
-                "",
+                  sectionViewAllProvider.sectionDetailList?[position].landscapeImg
+                      .toString() ??
+                  "",
             onTap: () async {
               printLog("Clicked on position ==> $position");
               final videoByIDProvider = Provider.of<VideoByIDProvider>(
@@ -373,28 +400,56 @@ class WebSectionViewAllState extends State<WebSectionViewAll> {
                 },
               );
             },
+            ),
+          );
+          if (position == 5) {
+            cards.add(
+              SizedBox(
+                width: gridWidth,
+                child: const Center(
+                  child: AdsterraAd(
+                    unit: AdsterraUnit.banner320x50,
+                    margin: EdgeInsets.symmetric(vertical: 8),
+                  ),
+                ),
+              ),
+            );
+          }
+        }
+
+        return Padding(
+          padding: EdgeInsets.fromLTRB(
+            horizontalPadding,
+            8,
+            horizontalPadding,
+            20,
           ),
-        ),
-      ),
+          child: Wrap(
+            spacing: spacing,
+            runSpacing: bigScreen ? 20 : 10,
+            alignment: WrapAlignment.center,
+            children: cards,
+          ),
+        );
+      },
     );
   }
 
   Widget _buildLanguage() {
-    final bool bigScreen = Dimens.isBigScreen(context);
-    final double itemH = bigScreen
-        ? Dimens.heightLangWeb
-        : Dimens.heightLangViewAll;
-    final double itemW = bigScreen
-        ? Dimens.widthLangWeb
-        : Dimens.widthLangViewAll;
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-      child: Wrap(
-        spacing: bigScreen ? 20 : 10,
-        runSpacing: bigScreen ? 20 : 10,
-        alignment: WrapAlignment.start,
-        children: List.generate(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final bigScreen = Dimens.isBigScreen(context);
+        final horizontalPadding = bigScreen ? 20.0 : 16.0;
+        final spacing = bigScreen ? 20.0 : 10.0;
+        final width = constraints.hasBoundedWidth
+            ? constraints.maxWidth
+            : MediaQuery.sizeOf(context).width;
+        final gridWidth = (width - horizontalPadding * 2).clamp(0.0, width);
+        final itemW = bigScreen
+            ? Dimens.widthLangWeb
+            : ((gridWidth - spacing * 2) / 3).clamp(80.0, 150.0).toDouble();
+        final itemH = bigScreen ? Dimens.heightLangWeb : itemW;
+        final cards = List<Widget>.generate(
           sectionViewAllProvider.sectionDetailList?.length ?? 0,
           (position) => _HoverCircleCard(
             width: itemW,
@@ -430,23 +485,40 @@ class WebSectionViewAllState extends State<WebSectionViewAll> {
               );
             },
           ),
-        ),
-      ),
+        );
+        return Padding(
+          padding: EdgeInsets.fromLTRB(
+            horizontalPadding,
+            8,
+            horizontalPadding,
+            20,
+          ),
+          child: Wrap(
+            spacing: spacing,
+            runSpacing: bigScreen ? 20 : 10,
+            alignment: WrapAlignment.center,
+            children: cards,
+          ),
+        );
+      },
     );
   }
 
   Widget _buildGenres() {
-    final bool bigScreen = Dimens.isBigScreen(context);
-    final double itemH = bigScreen ? Dimens.heightGenWeb : Dimens.heightGen;
-    final double itemW = bigScreen ? Dimens.widthGenWeb : Dimens.widthGen;
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-      child: Wrap(
-        spacing: bigScreen ? 20 : 10,
-        runSpacing: bigScreen ? 20 : 10,
-        alignment: WrapAlignment.start,
-        children: List.generate(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final bigScreen = Dimens.isBigScreen(context);
+        final horizontalPadding = bigScreen ? 20.0 : 16.0;
+        final spacing = bigScreen ? 20.0 : 10.0;
+        final width = constraints.hasBoundedWidth
+            ? constraints.maxWidth
+            : MediaQuery.sizeOf(context).width;
+        final gridWidth = (width - horizontalPadding * 2).clamp(0.0, width);
+        final itemW = bigScreen
+            ? Dimens.widthGenWeb
+            : ((gridWidth - spacing * 2) / 3).clamp(80.0, 150.0).toDouble();
+        final itemH = bigScreen ? Dimens.heightGenWeb : itemW;
+        final cards = List<Widget>.generate(
           sectionViewAllProvider.sectionDetailList?.length ?? 0,
           (position) => _HoverCircleCard(
             width: itemW,
@@ -482,8 +554,22 @@ class WebSectionViewAllState extends State<WebSectionViewAll> {
               );
             },
           ),
-        ),
-      ),
+        );
+        return Padding(
+          padding: EdgeInsets.fromLTRB(
+            horizontalPadding,
+            8,
+            horizontalPadding,
+            20,
+          ),
+          child: Wrap(
+            spacing: spacing,
+            runSpacing: bigScreen ? 20 : 10,
+            alignment: WrapAlignment.center,
+            children: cards,
+          ),
+        );
+      },
     );
   }
 }

@@ -17,6 +17,7 @@ import '../widget/mytext.dart';
 import '../widget/nodata.dart';
 import '../utils/color.dart';
 import '../webwidget/web_hover_card.dart';
+import '../webwidget/web_content_with_ad_rail.dart';
 
 class WebViewAll extends StatefulWidget {
   final String appBarTitle;
@@ -115,7 +116,7 @@ class WebViewAllState extends State<WebViewAll> {
       children: [
         SizedBox(height: Dimens.homeTabHeight),
         _buildAppbar(),
-        _setContentByType(),
+        WebContentWithAdRail(child: _setContentByType()),
         const AdsterraAd(
           unit: AdsterraUnit.banner320x50,
           margin: EdgeInsets.symmetric(vertical: 16),
