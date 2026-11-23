@@ -70,6 +70,8 @@ class _PlayerVideoState extends State<PlayerVideo>
   late VideoPlayerController _videoPlayerController;
   bool _isControllerReady =
       false; // [FIX] guards all controller access before init
+  bool _isPlayerInitializing = true;
+  String? _playerError;
   // Chrome/Safari may reject an autoplay request that is made after the
   // player route has finished navigating. A muted retry lets the first frame
   // start without leaving the poster frozen on screen.
@@ -279,12 +281,10 @@ class _PlayerVideoState extends State<PlayerVideo>
     }
   }
 
-  /// Starts the content player and handles browser autoplay restrictions.
-  ///
-  /// A route transition can consume the original tap gesture before the
-  /// video element is initialized. In that case browsers reject audible
-  /// playback. Retrying muted is the only browser-safe fallback; a later
-  /// user-initiated play request restores audio in [_playVideo].
+  /// Starts content playback without letting browser autoplay policy leave a
+  /// poster frame on screen. Watch Now may await account/config checks before
+  /// the player element exists, so web playback starts muted and offers a
+  /// visible user gesture to restore audio.
   Future<bool> _playVideo({bool userInitiated = false}) async {
     if (!_isControllerReady || !_videoPlayerController.value.isInitialized) {
       return false;
@@ -293,37 +293,37 @@ class _PlayerVideoState extends State<PlayerVideo>
     if (userInitiated && _autoplayMuted) {
       try {
         await _videoPlayerController.setVolume(1.0);
-        _autoplayMuted = false;
+        if (mounted) setState(() => _autoplayMuted = false);
       } catch (error) {
-        printLog("Player: failed to restore audio after muted autoplay: $error");
+        printLog(
+          "Player: failed to restore audio after muted autoplay: $error",
+        );
+      }
+    }
+
+    // video_player_web resolves play() after sending a browser NotAllowedError
+    // into its event stream. Its isPlaying value can therefore be optimistic
+    // even when audible autoplay was rejected. Muting before play is reliable
+    // on mobile Safari and Chrome and starts playback without another tap.
+    if (kIsWeb && !userInitiated) {
+      try {
+        await _videoPlayerController.setVolume(0.0);
+        if (mounted && !_autoplayMuted) {
+          setState(() => _autoplayMuted = true);
+        }
+        await _videoPlayerController.play();
+        return true;
+      } catch (error) {
+        printLog("Player: muted web autoplay failed: $error");
+        return false;
       }
     }
 
     try {
       await _videoPlayerController.play();
-      // Some web engines resolve play() before updating the Flutter value.
-      // Give the element one event-loop turn, then use the muted fallback if
-      // the request was silently rejected.
-      if (kIsWeb && !userInitiated) {
-        await Future<void>.delayed(Duration.zero);
-      }
-      if (!kIsWeb || userInitiated || _videoPlayerController.value.isPlaying) {
-        return true;
-      }
-      printLog("Player: web play resolved without starting playback");
+      return true;
     } catch (error) {
       printLog("Player: play request rejected: $error");
-    }
-
-    if (!kIsWeb || userInitiated) return false;
-    try {
-      await _videoPlayerController.setVolume(0.0);
-      await _videoPlayerController.play();
-      _autoplayMuted = true;
-      printLog("Player: resumed with muted web autoplay fallback");
-      return true;
-    } catch (mutedError) {
-      printLog("Player: muted autoplay fallback failed: $mutedError");
       return false;
     }
   }
@@ -477,31 +477,42 @@ class _PlayerVideoState extends State<PlayerVideo>
     // [FIX] _setVideoURL() moved inside addPostFrameCallback and awaited
     // DO NOT call _setVideoURL() here — it is async and must be awaited
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      // Step 1: Force landscape first, wait for system to apply it
-      if (!kIsWeb) {
-        OrientationManager.forceLandscape();
-        await Future.delayed(const Duration(milliseconds: 80));
-      }
-      // Step 2: [FIX] Await controller init BEFORE anything else touches it
-      await _setVideoURL();
-      if (!mounted) return;
-      _isControllerReady = true; // [FIX] controller now safely assigned
+      try {
+        // Step 1: Force landscape first, wait for system to apply it
+        if (!kIsWeb) {
+          OrientationManager.forceLandscape();
+          await Future.delayed(const Duration(milliseconds: 80));
+        }
+        // Step 2: Await controller assignment before anything touches it.
+        await _setVideoURL();
+        if (!mounted) return;
+        _isControllerReady = true;
 
-      // Web playback does not use IMA. Avoid a remote config request on the
-      // critical startup path so the player can initialize immediately.
-      if (kIsWeb) {
-        imaAdsFeatureStatus = null;
-      } else {
-        imaAdsFeatureStatus = await Utils.configByStatus(
-          status: Constant.playerIMAAdsStatus,
-        );
-      }
-      printLog('_getData imaAdsFeatureStatus =======> $imaAdsFeatureStatus');
-      _shouldShowContentVideo = false;
-      _isAdActuallyPlaying = false;
+        // Web playback does not use IMA. Avoid a remote config request on the
+        // critical startup path so the player can initialize immediately.
+        if (kIsWeb) {
+          imaAdsFeatureStatus = null;
+        } else {
+          imaAdsFeatureStatus = await Utils.configByStatus(
+            status: Constant.playerIMAAdsStatus,
+          );
+        }
+        if (!mounted) return;
+        printLog('_getData imaAdsFeatureStatus =======> $imaAdsFeatureStatus');
+        _shouldShowContentVideo = false;
+        _isAdActuallyPlaying = false;
 
-      // Step 4: Init ads + player (controller guaranteed assigned)
-      _initIMAAds();
+        // Step 4: Init ads + player (controller guaranteed assigned)
+        _initIMAAds();
+      } catch (error) {
+        printLog("Player: startup setup failed: $error");
+        if (!mounted) return;
+        setState(() {
+          _isPlayerInitializing = false;
+          _playerError =
+              "The video did not start. Check your connection and retry.";
+        });
+      }
     });
     if (kIsWeb) {
       // [WEB-4] Web: start with controls hidden — hover will show them
@@ -706,10 +717,14 @@ class _PlayerVideoState extends State<PlayerVideo>
 
   Future<bool> _initializeControllerWithFallback() async {
     try {
-      await _videoPlayerController.initialize();
+      await _videoPlayerController.initialize().timeout(
+        const Duration(seconds: 18),
+      );
       return true;
     } catch (error) {
-      printLog("Player: video initialization failed for $_activeVideoUrl: $error");
+      printLog(
+        "Player: video initialization failed for $_activeVideoUrl: $error",
+      );
     }
 
     // The quality list can contain an expired or unavailable rendition while
@@ -726,7 +741,9 @@ class _PlayerVideoState extends State<PlayerVideo>
       await _videoPlayerController.dispose();
       _activeVideoUrl = fallbackUrl;
       _videoPlayerController = _networkVideoController(fallbackUrl);
-      await _videoPlayerController.initialize();
+      await _videoPlayerController.initialize().timeout(
+        const Duration(seconds: 18),
+      );
       printLog("Player: initialized canonical fallback source");
       return true;
     } catch (fallbackError) {
@@ -736,11 +753,25 @@ class _PlayerVideoState extends State<PlayerVideo>
   }
 
   Future<void> initializePlayer() async {
-    if (!await _initializeControllerWithFallback() || !mounted) return;
+    final initialized = await _initializeControllerWithFallback();
+    if (!mounted) return;
+    if (!initialized) {
+      setState(() {
+        _isPlayerInitializing = false;
+        _playerError =
+            "The video did not start. Check your connection and retry.";
+      });
+      playerProvider.notifyProvider();
+      return;
+    }
 
-    printLog(
-      "initializePlayer stopTime :===> ${widget.playerModel.stopTime}",
-    );
+    setState(() {
+      _isPlayerInitializing = false;
+      _playerError = null;
+    });
+    _videoPlayerController.addListener(_onVideoListener);
+
+    printLog("initializePlayer stopTime :===> ${widget.playerModel.stopTime}");
     FirstPartyTelemetry.instance.track(
       'player_ready',
       placement: 'player',
@@ -753,9 +784,22 @@ class _PlayerVideoState extends State<PlayerVideo>
 
     if (widget.playerModel.stopTime != null &&
         (widget.playerModel.stopTime ?? 0) > 0) {
-      await _videoPlayerController.seekTo(
-        Duration(milliseconds: widget.playerModel.stopTime ?? 0),
-      );
+      try {
+        final requestedPosition = Duration(
+          milliseconds: widget.playerModel.stopTime ?? 0,
+        );
+        final duration = _videoPlayerController.value.duration;
+        final resumePosition =
+            duration > Duration.zero && requestedPosition >= duration
+            ? duration - const Duration(milliseconds: 250)
+            : requestedPosition;
+        await _videoPlayerController.seekTo(resumePosition);
+      } catch (error) {
+        // A stale resume position must not prevent the video from starting.
+        printLog(
+          "Player: resume seek failed; starting from current position: $error",
+        );
+      }
     }
 
     // [WEB-2] Browser fullscreen is now controlled by dedicated button only
@@ -777,10 +821,6 @@ class _PlayerVideoState extends State<PlayerVideo>
     _startHideTimer();
     startDurationTimer();
 
-    _videoPlayerController.addListener(
-      _onVideoListener,
-    ); // [OPT] named method for clean removal
-
     /* Handle PIP */
     _pipChannel.setMethodCallHandler((call) async {
       if (call.method == "pipClosed") {
@@ -800,9 +840,45 @@ class _PlayerVideoState extends State<PlayerVideo>
     });
   }
 
+  Future<void> _retryPlayerInitialization() async {
+    if (!mounted || _isPlayerInitializing) return;
+    setState(() {
+      _isPlayerInitializing = true;
+      _playerError = null;
+      _shouldShowContentVideo = false;
+    });
+    try {
+      if (_isControllerReady) {
+        _videoPlayerController.removeListener(_onVideoListener);
+        await _videoPlayerController.dispose();
+        _isControllerReady = false;
+      }
+      await _setVideoURL();
+      if (!mounted) return;
+      _isControllerReady = true;
+      await initializePlayer();
+    } catch (error) {
+      printLog("Player: retry initialization failed: $error");
+      if (!mounted) return;
+      setState(() {
+        _isPlayerInitializing = false;
+        _playerError =
+            "The video did not start. Check your connection and retry.";
+      });
+    }
+  }
+
   // [OPT] OPT-2: Named listener for clean addListener/removeListener pairing
   void _onVideoListener() {
     if (!mounted) return;
+    if (_videoPlayerController.value.hasError && _playerError == null) {
+      _playerError =
+          _videoPlayerController.value.errorDescription ??
+          "The video could not be played.";
+      _isPlayerInitializing = false;
+      playerProvider.notifyProvider();
+      return;
+    }
     final posMs = _videoPlayerController.value.position.inMilliseconds;
     final durMs = _videoPlayerController.value.duration.inMilliseconds;
     playerCPosition = posMs;
@@ -1824,8 +1900,9 @@ class _PlayerVideoState extends State<PlayerVideo>
   Widget _setBuildPlayer() {
     Widget child;
 
-    // [FIX] MUST check _isControllerReady FIRST — late field not assigned yet
-    if (!_isControllerReady) {
+    if (_playerError != null) {
+      child = _buildPlayerErrorView(key: const ValueKey('video-error'));
+    } else if (!_isControllerReady) {
       child = _buildPosterView(key: const ValueKey('poster-init'));
     } else if (!_shouldShowContentVideo &&
         !_videoPlayerController.value.isInitialized) {
@@ -1852,6 +1929,55 @@ class _PlayerVideoState extends State<PlayerVideo>
       transitionBuilder: (child, animation) =>
           FadeTransition(opacity: animation, child: child),
       child: child,
+    );
+  }
+
+  Widget _buildPlayerErrorView({Key? key}) {
+    return Container(
+      key: key,
+      color: black,
+      padding: const EdgeInsets.all(24),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.videocam_off_rounded, color: white, size: 42),
+            const SizedBox(height: 14),
+            const Text(
+              "Video could not start",
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: white,
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _playerError ?? "Check your connection and try again.",
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: white.withValues(alpha: 0.72),
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              onPressed: _isPlayerInitializing
+                  ? null
+                  : _retryPlayerInitialization,
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text("Retry"),
+            ),
+            const SizedBox(height: 8),
+            TextButton.icon(
+              onPressed: () => onBackPressed(false),
+              icon: const Icon(Icons.arrow_back_rounded, color: white),
+              label: const Text("Back", style: TextStyle(color: white)),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1901,6 +2027,33 @@ class _PlayerVideoState extends State<PlayerVideo>
             ),
           ),
         ),
+
+        if (kIsWeb && _autoplayMuted)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 24,
+            child: SafeArea(
+              child: Center(
+                child: TextButton.icon(
+                  onPressed: () async {
+                    await _playVideo(userInitiated: true);
+                    if (mounted) playerProvider.notifyProvider();
+                  },
+                  style: TextButton.styleFrom(
+                    foregroundColor: white,
+                    backgroundColor: black.withValues(alpha: 0.72),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 11,
+                    ),
+                  ),
+                  icon: const Icon(Icons.volume_off_rounded, size: 19),
+                  label: const Text("Tap to unmute"),
+                ),
+              ),
+            ),
+          ),
 
         // Quality-switch overlay
         if (_isQualitySwitching)
