@@ -91,7 +91,7 @@
                             </div>
                             <div class="form-group mb-0">
                                 <label for="bulk_video_files">Choose MP4 videos <span class="text-danger">*</span></label>
-                                <input type="file" id="bulk_video_files" class="form-control" accept=".mp4,video/mp4" multiple>
+                                <input type="file" id="bulk_video_files" class="form-control" accept=".mp4,video/mp4" multiple disabled>
                                 <small class="form-text text-muted">Uploads start automatically. After each file completes, it is saved to the server automatically and removed from this queue.</small>
                             </div>
                         </div>
@@ -688,7 +688,7 @@
     <script src="{{ asset('/assets/js/plupload.full.min.js')}}"></script>
     <script src="{{ asset('/assets/js/common.js')}}"></script>
     @if($type['type'] == 1)
-        <script src="{{ asset('/assets/js/bulk-video-upload-20261123.js?v=20261124-bulk12') }}"></script>
+        <script src="{{ asset('/assets/js/bulk-video-upload-20261123.js?v=20261124-bulk13') }}"></script>
     @endif
 
     <script>

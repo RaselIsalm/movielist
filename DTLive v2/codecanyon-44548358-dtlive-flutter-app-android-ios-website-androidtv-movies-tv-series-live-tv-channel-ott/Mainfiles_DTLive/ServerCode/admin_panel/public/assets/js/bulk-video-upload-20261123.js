@@ -19,9 +19,10 @@
     };
     const chunkSize = 1024 * 1024;
     const uploadConcurrency = 3;
+    const autoSaveConcurrency = 4;
     let queue = [];
     let uploading = false;
-    let autoSaving = false;
+    let activeAutoSaves = 0;
     let batchTotal = 0;
     let batchSaved = 0;
     let redirectTimer = null;
@@ -272,7 +273,7 @@
             $list.append($row);
         });
 
-        $('#bulk_video_files').prop('disabled', false);
+        $('#bulk_video_files').prop('disabled', !hasMetadata());
     }
 
     function renderQueue() {
@@ -381,24 +382,25 @@
         }
     }
 
-    async function processAutoSaveQueue() {
-        if (autoSaving || !hasMetadata()) {
+    function processAutoSaveQueue() {
+        if (!hasMetadata()) {
             renderQueue();
             return;
         }
-        const item = queue.find(function (candidate) {
-            return candidate.status === 'uploaded' && candidate.uploadId && !candidate.autoSaveStarted;
-        });
-        if (!item) {
-            renderQueue();
-            maybeRedirectAfterBatch();
-            return;
+        while (activeAutoSaves < autoSaveConcurrency) {
+            const item = queue.find(function (candidate) {
+                return candidate.status === 'uploaded' && candidate.uploadId && !candidate.autoSaveStarted;
+            });
+            if (!item) break;
+            activeAutoSaves += 1;
+            autoSaveItem(item).finally(function () {
+                activeAutoSaves -= 1;
+                renderQueue();
+                processAutoSaveQueue();
+            });
         }
-        autoSaving = true;
-        await autoSaveItem(item);
-        autoSaving = false;
         renderQueue();
-        processAutoSaveQueue();
+        maybeRedirectAfterBatch();
     }
 
     async function uploadItem(item) {
@@ -559,6 +561,12 @@
             $('#save_video').show();
         });
         $('#bulk_video_files').on('change', function (event) {
+            if (!hasMetadata()) {
+                toastr.error('Enter the shared title, category, and language before choosing videos.');
+                event.target.value = '';
+                renderQueue();
+                return;
+            }
             Array.from(event.target.files || []).forEach(function (file) {
                 if (!file.name.toLowerCase().endsWith('.mp4')) {
                     toastr.error(file.name + ' is not an MP4 file.');
