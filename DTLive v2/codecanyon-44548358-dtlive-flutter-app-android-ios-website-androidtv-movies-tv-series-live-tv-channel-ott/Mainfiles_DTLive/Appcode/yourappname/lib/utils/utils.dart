@@ -700,24 +700,28 @@ class Utils {
 
     Future<void> navigateTo(Widget Function() pageBuilder) async {
       if (kIsWeb || Constant.isTV) {
+        void navigateRoute(String location) {
+          if (kIsWeb) {
+            context.push(location, extra: extraParams);
+          } else {
+            context.go(location, extra: extraParams);
+          }
+        }
         if (videoType == Constant.shortsContentType) {
           // Details Page Path => /episodes/:videotype/:typeid/:videoid/:subvideotype
           if (subVideoType != 0) {
-            context.go(
+            navigateRoute(
               "/${RoutesConstant.clipsEpisodesPage}/$videoType/$typeId/$videoId/$subVideoType",
-              extra: extraParams,
             );
           } else {
-            context.go(
+            navigateRoute(
               "/${RoutesConstant.clipsEpisodesPage}/$videoType/$typeId/$videoId",
-              extra: extraParams,
             );
           }
         } else {
           // Details Page Path => /details/:videotype/:typeid/:videoid/:subvideotype
-          context.go(
+          navigateRoute(
             "/${RoutesConstant.contentDetailsPage}/$videoType/$typeId/$videoId/$subVideoType",
-            extra: extraParams,
           );
         }
       } else {
@@ -806,24 +810,28 @@ class Utils {
 
     Future<void> navigateTo(Widget Function() pageBuilder) async {
       if (kIsWeb || Constant.isTV) {
+        void navigateRoute(String location) {
+          if (kIsWeb) {
+            context.push(location, extra: extraParams);
+          } else {
+            context.go(location, extra: extraParams);
+          }
+        }
         if (videoType == Constant.shortsContentType) {
           // Details Page Path => /episodes/:videotype/:typeid/:videoid/:subvideotype
           if (subVideoType != 0) {
-            context.go(
+            navigateRoute(
               "/${RoutesConstant.clipsEpisodesPage}/$videoType/$typeId/$videoId/$subVideoType",
-              extra: extraParams,
             );
           } else {
-            context.go(
+            navigateRoute(
               "/${RoutesConstant.clipsEpisodesPage}/$videoType/$typeId/$videoId",
-              extra: extraParams,
             );
           }
         } else {
           // Details Page Path => /details/:videotype/:typeid/:videoid/:subvideotype
-          context.go(
+          navigateRoute(
             "/${RoutesConstant.contentDetailsPage}/$videoType/$typeId/$videoId/$subVideoType",
-            extra: extraParams,
           );
         }
       } else {
