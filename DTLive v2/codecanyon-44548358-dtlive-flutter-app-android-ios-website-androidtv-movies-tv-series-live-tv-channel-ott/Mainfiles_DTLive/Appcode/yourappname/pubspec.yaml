@@ -171,7 +171,6 @@ flutter:
     - assets/
     - assets/images/
     - assets/appicon/
-    - assets/firebase/
     - assets/locales/en.json
     - assets/locales/af.json
     - assets/locales/ar.json
