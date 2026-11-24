@@ -1,6 +1,7 @@
 import 'package:flutter_locales/flutter_locales.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../players/player_youtube_web.dart';
@@ -39,10 +40,31 @@ import '../webpages/webseopage.dart';
 import '../webpages/webrentstore.dart';
 import '../webpages/webcontentshowdetails.dart';
 import '../webpages/webcontentbyid.dart';
+import '../webwidget/ad_slot_banner.dart';
 import '../webpages/webmywatchlist.dart';
 import '../webpages/webratingreview.dart';
 import '../utils/constant.dart';
 import '../utils/utils.dart';
+
+/// Keeps the player full-screen while exposing the optional, admin-managed
+/// player banner at the bottom of the viewport. The ad widget collapses to
+/// zero height when no active creative is configured, so playback never waits
+/// for or reserves space for advertising.
+Widget _playerWithAd(Widget player) {
+  return Stack(
+    fit: StackFit.expand,
+    children: [
+      player,
+      const Align(
+        alignment: Alignment.bottomCenter,
+        child: SafeArea(
+          top: false,
+          child: AdSlotBanner(slotKey: 'player.below'),
+        ),
+      ),
+    ],
+  );
+}
 
 class RoutesConfig {
   GoRouter goRouter = GoRouter(
@@ -627,29 +649,33 @@ class RoutesConfig {
             playerModel = state.extra as PlayerModel;
             printLog("newPage =====> $newPage");
             if (playerModel.uploadType == "youtube") {
-              return PlayerYoutubeWeb(playerModel: playerModel);
+              return _playerWithAd(PlayerYoutubeWeb(playerModel: playerModel));
             } else if (playerModel.uploadType == "external") {
               if ((playerModel.videoUrl ?? "").contains('youtube')) {
-                return PlayerYoutubeWeb(playerModel: playerModel);
+                return _playerWithAd(
+                  PlayerYoutubeWeb(playerModel: playerModel),
+                );
               } else if ((playerModel.videoUrl ?? "").contains("vimeo")) {
-                return PlayerVimeo(playerModel: playerModel);
+                return _playerWithAd(PlayerVimeo(playerModel: playerModel));
               } else {
-                return PlayerVideo(playerModel: playerModel);
+                return _playerWithAd(PlayerVideo(playerModel: playerModel));
               }
             } else if (playerModel.uploadType == "live_stream_url") {
               if ((playerModel.videoUrl ?? "").contains('youtube')) {
-                return PlayerYoutubeWeb(playerModel: playerModel);
+                return _playerWithAd(
+                  PlayerYoutubeWeb(playerModel: playerModel),
+                );
               } else if ((playerModel.videoUrl ?? "").contains("vimeo")) {
-                return PlayerVimeo(playerModel: playerModel);
+                return _playerWithAd(PlayerVimeo(playerModel: playerModel));
               } else {
-                return PlayerVideo(playerModel: playerModel);
+                return _playerWithAd(PlayerVideo(playerModel: playerModel));
               }
             } else if (playerModel.uploadType == "vimeo") {
-              return PlayerVimeo(playerModel: playerModel);
+              return _playerWithAd(PlayerVimeo(playerModel: playerModel));
             } else if (playerModel.uploadType == Constant.vdocipherPlayType) {
-              return PlayerVdoCipher(playerModel: playerModel);
+              return _playerWithAd(PlayerVdoCipher(playerModel: playerModel));
             } else {
-              return PlayerVideo(playerModel: playerModel);
+              return _playerWithAd(PlayerVideo(playerModel: playerModel));
             }
           } else {
             return WebErrorPage(
