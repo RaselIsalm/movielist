@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:go_router/go_router.dart';
@@ -403,9 +404,6 @@ class WebContentShowDetailsState extends State<WebContentShowDetails>
       return;
     }
 
-    // Open the Smartlink while the click is still a browser user gesture.
-    await SmartlinkAd.open();
-
     if ((episodeProvider.episodeList?.length ?? 0) > 0) {
       /* CHECK SUBSCRIPTION */
       if (playType != "Trailer") {
@@ -566,6 +564,10 @@ class WebContentShowDetailsState extends State<WebContentShowDetails>
         return;
       }
 
+      // Ads are best-effort. Start the new tab without blocking the player
+      // or allowing a popup failure to hide the episode controls.
+      unawaited(SmartlinkAd.open());
+
       /* VdoCipher OTP */
       VdoCipherModel? vdocipherDetails;
       if (vUploadType == Constant.vdocipherPlayType && playType != "Trailer") {
@@ -660,6 +662,8 @@ class WebContentShowDetailsState extends State<WebContentShowDetails>
           Utils.showSnackbar(context, "info", "trailer_not_found", true);
           return;
         }
+
+        unawaited(SmartlinkAd.open());
 
         /* VdoCipher OTP */
         VdoCipherModel? vdocipherDetails;
@@ -782,6 +786,7 @@ class WebContentShowDetailsState extends State<WebContentShowDetails>
                 const NoData(
                   title: 'Unable to load content',
                   subTitle: 'Check your connection and try again.',
+                  localize: false,
                 ),
                 const SizedBox(height: 12),
                 OutlinedButton(

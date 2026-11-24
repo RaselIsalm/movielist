@@ -6,7 +6,13 @@ import 'package:flutter/material.dart';
 
 class NoData extends StatelessWidget {
   final String? title, subTitle;
-  const NoData({super.key, required this.title, required this.subTitle});
+  final bool localize;
+  const NoData({
+    super.key,
+    required this.title,
+    required this.subTitle,
+    this.localize = true,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -43,7 +49,7 @@ class NoData extends StatelessWidget {
                     fontsizeNormal: 16,
                     fontsizeWeb: 18,
                     maxline: 5,
-                    multilanguage: true,
+                    multilanguage: localize,
                     overflow: TextOverflow.ellipsis,
                     fontweight: FontWeight.w600,
                     textalign: TextAlign.center,
@@ -58,7 +64,7 @@ class NoData extends StatelessWidget {
                     fontsizeNormal: 14,
                     fontsizeWeb: 16,
                     maxline: 20,
-                    multilanguage: true,
+                    multilanguage: localize,
                     overflow: TextOverflow.ellipsis,
                     fontweight: FontWeight.w500,
                     textalign: TextAlign.center,

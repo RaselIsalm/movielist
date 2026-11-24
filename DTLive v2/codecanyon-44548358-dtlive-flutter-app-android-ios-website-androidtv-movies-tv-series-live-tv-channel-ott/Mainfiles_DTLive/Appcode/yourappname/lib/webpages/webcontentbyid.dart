@@ -260,6 +260,7 @@ class WebVideosByIDState extends State<WebVideosByID> {
                   const NoData(
                     title: 'Unable to load content',
                     subTitle: 'Check your connection and try again.',
+                    localize: false,
                   ),
                   const SizedBox(height: 12),
                   OutlinedButton(

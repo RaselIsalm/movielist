@@ -214,8 +214,8 @@ class WebHomeState extends State<WebHome> {
   ) async {
     printLog("index ==========> $index");
 
-    // Open the Smartlink while the click is still a browser user gesture.
-    await SmartlinkAd.open();
+    // Ads are best-effort and must never delay or cancel playback.
+    unawaited(SmartlinkAd.open());
 
     /* CHECK SUBSCRIPTION */
     if (playType != "Trailer") {
@@ -379,6 +379,7 @@ class WebHomeState extends State<WebHome> {
                 const NoData(
                   title: 'Unable to load content',
                   subTitle: 'Check your connection and try again.',
+                  localize: false,
                 ),
                 const SizedBox(height: 12),
                 OutlinedButton(
@@ -417,6 +418,7 @@ class WebHomeState extends State<WebHome> {
                   const NoData(
                     title: 'Unable to load content',
                     subTitle: 'Check your connection and try again.',
+                    localize: false,
                   ),
                   const SizedBox(height: 12),
                   OutlinedButton(

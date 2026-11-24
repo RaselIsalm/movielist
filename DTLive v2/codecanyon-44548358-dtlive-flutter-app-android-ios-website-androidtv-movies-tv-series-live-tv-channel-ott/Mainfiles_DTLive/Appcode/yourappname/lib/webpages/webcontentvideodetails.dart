@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:youtube_player_flutter/youtube_player_flutter.dart';
@@ -360,9 +361,6 @@ class WebContentVideoDetailsState extends State<WebContentVideoDetails>
 
   /* ========= Open Player ========= */
   Future<void> openPlayer(String playType) async {
-    // Open the Smartlink while the click is still a browser user gesture.
-    await SmartlinkAd.open();
-
     /* CHECK SUBSCRIPTION */
     if (playType != "Trailer") {
       bool? isPrimiumUser = await Utils.checkSubsRentLogin(
@@ -470,6 +468,9 @@ class WebContentVideoDetailsState extends State<WebContentVideoDetails>
       }
       return;
     }
+
+      // Ads are best-effort and must never delay or cancel playback.
+      unawaited(SmartlinkAd.open());
 
     /* VdoCipher OTP */
     VdoCipherModel? vdocipherDetails;
@@ -606,6 +607,7 @@ class WebContentVideoDetailsState extends State<WebContentVideoDetails>
                 const NoData(
                   title: 'Unable to load content',
                   subTitle: 'Check your connection and try again.',
+                  localize: false,
                 ),
                 const SizedBox(height: 12),
                 OutlinedButton(

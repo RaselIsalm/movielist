@@ -69,16 +69,19 @@
     }
 
     html {
+      min-height: 100%;
       height: -webkit-fill-available;
     }
 
     body {
       background: #000;
-      min-height: 100vh;
+      min-height: 100%;
       min-height: -webkit-fill-available;
-      overflow: hidden;
-      position: fixed;
+      overflow-x: hidden;
+      overflow-y: auto;
+      position: relative;
       width: 100%;
+      -webkit-overflow-scrolling: touch;
     }
 
     /* ══════════════════════════════════════════════
