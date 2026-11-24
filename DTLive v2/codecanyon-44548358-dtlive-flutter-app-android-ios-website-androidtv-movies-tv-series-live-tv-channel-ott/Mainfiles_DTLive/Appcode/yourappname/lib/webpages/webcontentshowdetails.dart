@@ -39,6 +39,7 @@ import '../widget/mynetworkimg.dart';
 import '../widget/ratingreview.dart';
 import '../widget/relatedvideoshow.dart';
 import '../ads/adsterra_ad.dart';
+import '../ads/smartlink_ad.dart';
 
 class WebContentShowDetails extends StatefulWidget {
   final String? newPage, oldPage;
@@ -393,8 +394,19 @@ class WebContentShowDetailsState extends State<WebContentShowDetails>
   /* ========= Open Player ========= */
   Future<void> openPlayer(String playType) async {
     printLog("mCurrentEpiPos ========> ${showDetailsProvider.mCurrentEpiPos}");
+    if ((episodeProvider.episodeList?.length ?? 0) == 0 &&
+        playType != "Trailer") {
+      return;
+    }
+    if ((episodeProvider.episodeList?.length ?? 0) > 0 &&
+        showDetailsProvider.mCurrentEpiPos == -1) {
+      return;
+    }
+
+    // Open the Smartlink while the click is still a browser user gesture.
+    await SmartlinkAd.open();
+
     if ((episodeProvider.episodeList?.length ?? 0) > 0) {
-      if (showDetailsProvider.mCurrentEpiPos == -1) return;
       /* CHECK SUBSCRIPTION */
       if (playType != "Trailer") {
         bool? isPrimiumUser = await Utils.checkSubsRentLogin(

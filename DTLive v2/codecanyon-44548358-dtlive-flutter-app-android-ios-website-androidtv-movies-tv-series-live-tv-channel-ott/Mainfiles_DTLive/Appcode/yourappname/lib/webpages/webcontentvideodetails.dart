@@ -38,6 +38,7 @@ import '../utils/utils.dart';
 import '../widget/mynetworkimg.dart';
 import '../widget/ratingreview.dart';
 import '../ads/adsterra_ad.dart';
+import '../ads/smartlink_ad.dart';
 
 class WebContentVideoDetails extends StatefulWidget {
   final String? newPage, oldPage;
@@ -359,6 +360,9 @@ class WebContentVideoDetailsState extends State<WebContentVideoDetails>
 
   /* ========= Open Player ========= */
   Future<void> openPlayer(String playType) async {
+    // Open the Smartlink while the click is still a browser user gesture.
+    await SmartlinkAd.open();
+
     /* CHECK SUBSCRIPTION */
     if (playType != "Trailer") {
       bool? isPrimiumUser = await Utils.checkSubsRentLogin(

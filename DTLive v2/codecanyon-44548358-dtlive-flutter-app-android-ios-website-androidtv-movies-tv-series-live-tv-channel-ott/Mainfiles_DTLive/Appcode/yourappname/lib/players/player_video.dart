@@ -32,6 +32,7 @@ import '../widget/mytext.dart';
 import '../model/playermodel.dart';
 import '../model/qualitymodel.dart';
 import '../ads/adsterra_ad.dart';
+import '../ads/smartlink_ad.dart';
 import '../analytics/first_party_telemetry.dart';
 import 'model/optionitem.dart';
 import 'model/subtitlemodel.dart';
@@ -1068,14 +1069,20 @@ class _PlayerVideoState extends State<PlayerVideo>
       await onBackPressed(false);
       return;
     }
-    await _jumpToEpisode(nextIndex);
+    // This transition is automatic, so it must not create a popup.
+    await _jumpToEpisode(nextIndex, showSmartlink: false);
   }
 
   // [NEW] FEATURE-6 + FEATURE-7: Shared jump-to-episode logic (used by panel + countdown)
-  Future<void> _jumpToEpisode(int index) async {
+  Future<void> _jumpToEpisode(int index, {bool showSmartlink = true}) async {
     if (!mounted) return;
     final list = widget.playerModel.episodeList;
     if (list == null || index >= list.length) return;
+
+    if (showSmartlink) {
+      // Manual episode selection is a browser user gesture.
+      await SmartlinkAd.open();
+    }
 
     final ep = list[index];
 

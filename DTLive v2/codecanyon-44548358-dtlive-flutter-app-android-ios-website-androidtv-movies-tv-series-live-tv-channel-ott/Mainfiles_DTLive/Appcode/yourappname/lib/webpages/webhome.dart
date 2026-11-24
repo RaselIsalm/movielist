@@ -42,6 +42,7 @@ import '../widget/content_section_widget.dart';
 import '../widget/genre_language_section_widget.dart';
 import '../widget/shorts_section_widget.dart';
 import '../ads/adsterra_ad.dart';
+import '../ads/smartlink_ad.dart';
 import '../provider/adslotprovider.dart';
 import '../webwidget/ad_slot_banner.dart';
 import '../analytics/first_party_telemetry.dart';
@@ -212,6 +213,9 @@ class WebHomeState extends State<WebHome> {
     List<list.Datum>? sectionList,
   ) async {
     printLog("index ==========> $index");
+
+    // Open the Smartlink while the click is still a browser user gesture.
+    await SmartlinkAd.open();
 
     /* CHECK SUBSCRIPTION */
     if (playType != "Trailer") {

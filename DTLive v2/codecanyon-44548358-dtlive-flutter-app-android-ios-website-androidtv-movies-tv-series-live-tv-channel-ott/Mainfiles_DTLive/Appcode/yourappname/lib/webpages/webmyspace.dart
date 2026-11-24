@@ -31,6 +31,7 @@ import '../webpages/webcomman.dart';
 import '../webwidget/interactive_icon.dart';
 import '../webwidget/leftright_scroll_on_hover.dart';
 import '../webwidget/web_hover_card.dart';
+import '../ads/smartlink_ad.dart';
 import '../widget/myimage.dart';
 import '../widget/mytext.dart';
 import '../widget/myusernetworkimg.dart';
@@ -156,6 +157,9 @@ class WebMySpaceState extends State<WebMySpace> with RouteAware {
     List<Result>? continueWatchingList,
   ) async {
     printLog("position ==========> $position");
+
+    // Open the Smartlink while the click is still a browser user gesture.
+    await SmartlinkAd.open();
 
     /* CHECK SUBSCRIPTION */
     if (playType != "Trailer") {
